@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>တရားဝင် 2D Live App</title>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD-BcyoV_vMAvrA3Dkrl_KDS2T9rsqoVSY",
+            authDomain: "my-2d-live-app-9e5cf.firebaseapp.com",
+            projectId: "my-2d-live-app-9e5cf",
+            storageBucket: "my-2d-live-app-9e5cf.firebasestorage.app",
+            messagingSenderId: "550809153448",
+            appId: "1:550809153448:web:96ae9c07093f925e44779d"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.docRef = doc;
+        window.setDocRef = setDoc;
+        window.getDocRef = getDoc;
+
+        // Start App after Firebase initialized
+        initApp();
+    </script>
+
+    <style>
+        body { 
+            font-family: sans-serif; 
+            background: linear-gradient(135deg, #1f4068, #162447, #1b1b2f); 
+            margin: 0; 
+            padding: 20px; 
+            color: #fff; 
+            min-height: 100vh;
+        }
+        .container { 
+            max-width: 400px; 
+            margin: 0 auto; 
+            background: rgba(255, 255, 255, 0.08); 
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 22px; 
+            border-radius: 16px; 
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .header-text {
+            font-size: 15px;
+            color: #64ffda;
+            font-weight: bold;
+            text-align: left;
+            line-height: 1.4;
+        }
+        .menu-icon {
+            font-size: 22px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: #fff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .sidebar {
+            height: 100%;
+            width: 0;
+            position: fixed;
+            z-index: 2000;
+            top: 0;
+            right: 0;
+            background-color: #111927;
+            overflow-x: hidden;
+            transition: 0.3s;
+            padding-top: 60px;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+            border-left: 1px solid rgba(255,255,255,0.1);
+        }
+        .sidebar a {
+            padding: 12px 20px;
+            text-decoration: none;
+            font-size: 15px;
+            color: #e2e8f0;
+            display: block;
+            transition: 0.2s;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .sidebar a:hover { background: rgba(255,255,255,0.1); color: #64ffda; }
+        .sidebar .close-menu {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 24px;
+            color: #ff6b6b;
+            cursor: pointer;
+        }
+
+        .date-box { text-align: center; color: #a0aec0; font-size: 14px; margin-bottom: 15px; font-weight: 500; }
+
+        .live-badge { 
+            background: rgba(56, 239, 125, 0.15); 
+            color: #38ef7d; 
+            padding: 6px 14px; 
+            border-radius: 20px; 
+            font-size: 12px; 
+            display: inline-block; 
+            margin-bottom: 10px; 
+            font-weight: bold;
+            border: 1px solid rgba(56, 239, 125, 0.3);
+            animation: pulseBadge 1.5s infinite;
+        }
+
+        @keyframes pulseBadge {
+            0% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.03); opacity: 1; box-shadow: 0 0 10px rgba(56,239,125,0.4); }
+            100% { transform: scale(1); opacity: 0.9; }
+        }
+
+        .live-digit-card { 
+            background: rgba(255, 255, 255, 0.12); 
+            border-radius: 12px; 
+            padding: 20px; 
+            margin-bottom: 15px; 
+            text-align: center; 
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.05);
+        }
+        .live-digit-card h3 { margin: 0 0 5px 0; color: #64ffda; font-size: 15px; letter-spacing: 1px; }
+        
+        .live-digit-number { 
+            font-size: 75px; 
+            font-weight: 900; 
+            margin: 5px 0 0 0; 
+            letter-spacing: 8px;
+            background: linear-gradient(45deg, #ff6b6b, #ff8e53, #ffd93d, #6fffe9);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
+            transition: all 0.3s ease;
+        }
+
+        .updating-anim {
+            animation: numberChangeAnim 0.4s ease-in-out;
+        }
+        @keyframes numberChangeAnim {
+            0% { transform: scale(0.9); opacity: 0.5; filter: blur(2px); }
+            50% { transform: scale(1.08); opacity: 1; filter: blur(0px); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .market-card { 
+            background: rgba(0, 0, 0, 0.25); 
+            border-radius: 10px; 
+            padding: 14px; 
+            margin-bottom: 15px; 
+            text-align: center; 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+        }
+        .market-row { display: flex; justify-content: space-around; align-items: center; margin-top: 5px; }
+        .market-item h3 { margin: 0 0 3px 0; color: #a0aec0; font-size: 12px; text-transform: uppercase; }
+        .market-val { font-size: 18px; font-weight: bold; color: #ffffff; margin: 0; letter-spacing: 1px; }
+
+        .card { 
+            background: rgba(255, 255, 255, 0.08); 
+            border-radius: 10px; 
+            padding: 15px; 
+            margin-bottom: 15px; 
+            text-align: center; 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+        }
+        .card h3 { margin: 0 0 8px 0; color: #e2e8f0; font-size: 15px; }
+        
+        .grid { display: flex; gap: 10px; }
+        .grid .card { flex: 1; background: rgba(0, 0, 0, 0.2); }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 3000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background: #162447;
+            margin: 10% auto;
+            padding: 20px;
+            width: 90%;
+            max-width: 380px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            max-height: 75vh;
+            overflow-y: auto;
+        }
+        .close-btn {
+            color: #ff6b6b;
+            float: right;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-btn:hover { color: #fff; }
+        
+        .history-card {
+            background: rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .history-date {
+            font-weight: bold;
+            color: #64ffda;
+            font-size: 14px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 4px;
+        }
+        .history-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            margin-top: 5px;
+            color: #e2e8f0;
+        }
+
+        .pred-main-digits {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffd93d;
+            background: rgba(0,0,0,0.2);
+            padding: 8px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            letter-spacing: 4px;
+        }
+        .pred-sub-digits {
+            text-align: center;
+            font-size: 14px;
+            color: #cbd5e1;
+            word-spacing: 2px;
+            padding: 4px;
+        }
+        .highlight-win {
+            color: #38ef7d !important;
+            background: rgba(56, 239, 125, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            border: 1px solid rgba(56, 239, 125, 0.4);
+        }
+        .win-badge {
+            margin-top: 8px;
+            background: rgba(56, 239, 125, 0.2);
+            color: #38ef7d;
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: bold;
+            border: 1px solid rgba(56, 239, 125, 0.4);
+        }
+
+        .admin-input {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        .admin-btn {
+            background: #38ef7d;
+            color: #111;
+            border: none;
+            padding: 10px 15px;
+            width: 100%;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #718096; cursor: pointer; user-select: none; }
+    </style>
+</head>
+<body>
+
+<div id="mySidebar" class="sidebar">
+    <span class="close-menu" onclick="closeNav()">&times;</span>
+    <h3 style="color: #4eccd3; padding: 0 20px; margin-top: 0;">မူး (Menu)</h3>
+    <a href="#" onclick="closeNav(); openHistoryModal()">📊 ဆာဗာမှတ်တမ်းများ (History)</a>
+    <a href="#" onclick="closeNav(); openPredictionModal()">💡 ခန့်မှန်းချက်များကြည့်ရန်</a>
+</div>
+
+<div class="container" style="text-align: center;">
+    <div class="header-bar">
+        <div class="header-text">ယနေ့ခန့်မှန်းပေါက်ဂဏန်းကို<br>Menu ထဲတွင်စစ်ဆေးပါ</div>
+        <button class="menu-icon" onclick="openNav()">☰</button>
+    </div>
+
+    <div class="live-badge">● တရားဝင် Live ၂စက္ကန့်တစ်ကြိမ် Update</div>
+    <div class="date-box" id="date-text">ရက်စွဲ - Loading...</div>
+
+    <div class="live-digit-card">
+        <h3>Live Digit (ထိပ် + ပိတ်)</h3>
+        <p class="live-digit-number" id="digit-result">--</p>
+    </div>
+
+    <div class="market-card">
+        <div class="market-row">
+            <div class="market-item">
+                <h3>SET Index</h3>
+                <p class="market-val" id="set-val">-</p>
+            </div>
+            <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.2);"></div>
+            <div class="market-item">
+                <h3>Value</h3>
+                <p class="market-val" id="val-val">-</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h3>မနက်ပိုင်း (12:01)</h3>
+            <p class="number" id="morning-val" style="font-size: 26px; font-weight: bold; color: #4ade80; margin: 0;">--</p>
+        </div>
+        <div class="card">
+            <h3>ညနေပိုင်း (4:30)</h3>
+            <p class="number" id="evening-val" style="font-size: 26px; font-weight: bold; color: #4ade80; margin: 0;">--</p>
+        </div>
+    </div>
+
+    <div class="footer" onclick="checkAdminSecret()">
+        <p>© 2026 Official 2D App | Powered by GitHub & Firebase</p>
+    </div>
+</div>
+
+<div id="historyModal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeHistoryModal()">&times;</span>
+        <h3 style="color: #4eccd3; margin-top: 0; text-align: center;">📊 ဆာဗာမှတ်တမ်းများ</h3>
+        <div id="history-list">
+            <p style="text-align: center; color: #a0aec0;">ဆွဲထုတ်နေပါသည်...</p>
+        </div>
+    </div>
+</div>
+
+<div id="predictionModal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closePredictionModal()">&times;</span>
+        <h3 style="color: #4eccd3; margin-top: 0; text-align: center;">💡 ခန့်မှန်းချက်မှတ်တမ်းများ</h3>
+        <div id="prediction-list">
+            <p style="text-align: center; color: #a0aec0;">ဆွဲထုတ်နေပါသည်...</p>
+        </div>
+    </div>
+</div>
+
+<div id="adminModal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeAdminModal()">&times;</span>
+        <h3 style="color: #64ffda; margin-top: 0; text-align: center;">⚙️ ခန့်မှန်းချက် ထည့်ရန်</h3>
+        <label style="font-size: 13px; color: #a0aec0;">ရက်စွဲ (DD-MM-YYYY):</label>
+        <input type="text" id="admin-date" class="admin-input" placeholder="ဥပမာ - 12-11-2026">
+        
+        <label style="font-size: 13px; color: #a0aec0;">ခန့်မှန်းချက် ဂဏန်းများ:</label>
+        <textarea id="admin-text" class="admin-input" rows="3" placeholder="ဥပမာ - 5 0 8 52,58,50,59,03,07,01,86,83,89"></textarea>
+        
+        <button class="admin-btn" onclick="saveAdminPrediction()">💾 သိမ်းဆည်းမည်</button>
+    </div>
+</div>
+
+<script>
+let currentLiveDate = '';
+let formattedCurrentDate = '';
+let footerClicks = 0;
+let clickTimer = null;
+let previousDigit = "";
+
+function initApp() {
+    fetchLive2D();
+    setInterval(fetchLive2D, 2000);
+}
+
+function checkAdminSecret() {
+    footerClicks++;
+    if (clickTimer) clearTimeout(clickTimer);
+    
+    if (footerClicks >= 3) {
+        footerClicks = 0;
+        let pass = prompt("Admin Password ထည့်ပါ:");
+        if (pass === "1234") {
+            openAdminModal();
+        } else if (pass !== null) {
+            alert("Password မှားယွင်းနေပါသည်။");
+        }
+    } else {
+        clickTimer = setTimeout(() => { footerClicks = 0; }, 500);
+    }
+}
+
+function openNav() { document.getElementById("mySidebar").style.width = "220px"; }
+function closeNav() { document.getElementById("mySidebar").style.width = "0"; }
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    let parts = dateString.split('T')[0].split('-');
+    if (parts.length === 3) {
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return dateString;
+}
+
+function getDayName(dateStr) {
+    let parts = dateStr.split('-');
+    if (parts.length === 3) {
+        let d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+        let days = ["တနင်္ဂနွေ", "တနင်္လာ", "အင်္ဂါ", "ဗုဒ္ဓဟူး", "ကြာသပတေး", "သောကြာ", "စနေ"];
+        return days[d.getDay()] || '';
+    }
+    return '';
+}
+
+async function saveToServerHistory(dateStr, morningVal, eveningVal) {
+    if (!dateStr || dateStr === '-') return;
+    try {
+        const docRef = window.docRef(window.db, "appData", "history");
+        const docSnap = await window.getDocRef(docRef);
+        let existingData = docSnap.exists() ? docSnap.data() : {};
+
+        if (!existingData[dateStr]) {
+            existingData[dateStr] = { morning: '--', evening: '--' };
+        }
+        if (morningVal && morningVal !== '--') existingData[dateStr].morning = morningVal;
+        if (eveningVal && eveningVal !== '--') existingData[dateStr].evening = eveningVal;
+
+        await window.setDocRef(docRef, existingData);
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function fetchLive2D() {
+    fetch('https://api.thaistock2d.com/live')
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.live) {
+                let setNumStr = data.live.set ? String(data.live.set) : '-';
+                let valNumStr = data.live.value ? String(data.live.value) : '-';
+                let rawDate = data.live.time ? data.live.time.substring(0, 10) : '';
+                
+                if (rawDate) currentLiveDate = rawDate;
+
+                formattedCurrentDate = formatDate(currentLiveDate);
+                document.getElementById('date-text').innerText = "ရက်စွဲ - " + formattedCurrentDate + " (" + getDayName(formattedCurrentDate) + ")";
+                document.getElementById('set-val').innerText = setNumStr;
+                document.getElementById('val-val').innerText = valNumStr;
+
+                let firstDigit = "", lastDigit = "";
+                if (setNumStr.includes('.')) firstDigit = setNumStr.split('.')[1].slice(-1);
+                if (valNumStr.includes('.')) lastDigit = valNumStr.split('.')[0].replace(/,/g, '').slice(-1);
+
+                let digitElem = document.getElementById('digit-result');
+                let newDigit = "--";
+
+                if (firstDigit !== "" && lastDigit !== "") {
+                    newDigit = firstDigit + lastDigit;
+                }
+
+                if (newDigit !== previousDigit) {
+                    digitElem.innerText = newDigit;
+                    previousDigit = newDigit;
+                    digitElem.classList.remove('updating-anim');
+                    void digitElem.offsetWidth;
+                    if (newDigit !== "--") {
+                        digitElem.classList.add('updating-anim');
+                    }
+                }
+
+                let morning = "--", evening = "--";
+                let cleanSet = setNumStr.replace(/[,.]/g, '');
+                if (cleanSet.length >= 2) morning = cleanSet.slice(-2);
+
+                if (data.result && Array.isArray(data.result)) {
+                    data.result.forEach(res => {
+                        let timeStr = res.open_time || '';
+                        let val2D = res.twod || '--';
+                        if (timeStr.includes('12:01')) morning = val2D;
+                        else if (timeStr.includes('16:30') || timeStr.includes('04:30')) evening = val2D;
+                    });
+                }
+
+                document.getElementById('morning-val').innerText = morning;
+                document.getElementById('evening-val').innerText = evening;
+                saveToServerHistory(formattedCurrentDate, morning, evening);
+            }
+
+            if (data && (data.history || data.result)) {
+                let list = data.history || data.result;
+                list.forEach(item => {
+                    let timeStr = item.open_time || item.time || '';
+                    let rawDate = item.date || (timeStr.includes('-') ? timeStr.split('T')[0] : currentLiveDate);
+                    let formattedD = formatDate(rawDate);
+                    let val2D = item.twod || item.number || '--';
+                    
+                    if (formattedD && formattedD !== '-') {
+                        let mVal = timeStr.includes('12:01') ? val2D : '--';
+                        let eVal = (timeStr.includes('16:30') || timeStr.includes('04:30')) ? val2D : '--';
+                        saveToServerHistory(formattedD, mVal, eVal);
+                    }
+                });
+            }
+        })
+        .catch(err => console.error(err));
+}
+
+async function openHistoryModal() {
+    document.getElementById('historyModal').style.display = 'block';
+    document.getElementById('history-list').innerHTML = '<p style="text-align: center; color: #a0aec0;">ဆွဲထုတ်နေပါသည်...</p>';
+
+    try {
+        const docRef = window.docRef(window.db, "appData", "history");
+        const docSnap = await window.getDocRef(docRef);
+        let savedHistory = docSnap.exists() ? docSnap.data() : {};
+
+        let dates = Object.keys(savedHistory).sort().reverse();
+        let listHtml = '';
+        if (dates.length > 0) {
+            dates.forEach(date => {
+                let d = savedHistory[date];
+                let dayName = getDayName(date);
+                listHtml += `
+                    <div class="history-card">
+                        <div class="history-date">📅 ရက်စွဲ - ${date} (${dayName})</div>
+                        <div class="history-row">
+                            <span>မနက်ပိုင်း (12:01):</span>
+                            <span style="font-weight: bold; color: #4ade80; font-size: 16px;">${d.morning}</span>
+                        </div>
+                        <div class="history-row">
+                            <span>ညနေပိုင်း (4:30):</span>
+                            <span style="font-weight: bold; color: #4ade80; font-size: 16px;">${d.evening}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            listHtml = '<p style="text-align: center; color: #a0aec0;">မှတ်တမ်းများ မရှိသေးပါ။</p>';
+        }
+        document.getElementById('history-list').innerHTML = listHtml;
+    } catch (err) {
+        console.error(err);
+        document.getElementById('history-list').innerHTML = '<p style="text-align: center; color: #ff6b6b;">ဒေတာဆွဲထုတ်ရာတွင် အမှားရှိပါသည်။</p>';
+    }
+}
+function closeHistoryModal() { document.getElementById('historyModal').style.display = 'none'; }
+
+async function openPredictionModal() {
+    document.getElementById('predictionModal').style.display = 'block';
+    document.getElementById('prediction-list').innerHTML = '<p style="text-align: center; color: #a0aec0;">ဆွဲထုတ်နေပါသည်...</p>';
+
+    try {
+        const predRef = window.docRef(window.db, "appData", "predictions");
+        const predSnap = await window.getDocRef(predRef);
+        let predData = predSnap.exists() ? predSnap.data() : {};
+
+        const histRef = window.docRef(window.db, "appData", "history");
+        const histSnap = await window.getDocRef(histRef);
+        let historyData = histSnap.exists() ? histSnap.data() : {};
+
+        let dates = Object.keys(predData).sort().reverse();
+        let listHtml = '';
+
+        if (dates.length > 0) {
+            dates.forEach(date => {
+                let text = predData[date].trim();
+                let dayName = getDayName(date);
+                let historyObj = historyData[date] || { morning: '--', evening: '--' };
+                let morningVal = historyObj.morning;
+                let eveningVal = historyObj.evening;
+
+                let checkTargets = [];
+                [morningVal, eveningVal].forEach(val => {
+                    if (val && val !== '--') {
+                        checkTargets.push(val);
+                        let rev = val.split('').reverse().join('');
+                        if (rev !== val) checkTargets.push(rev);
+                    }
+                });
+
+                let hasWon = false;
+                checkTargets.forEach(t => { if (text.includes(t)) hasWon = true; });
+
+                let parts = text.split(/\s+/);
+                let mainDigits = "";
+                let subDigits = text;
+
+                if (parts.length >= 3) {
+                    mainDigits = parts.slice(0, 3).join(' ');
+                    subDigits = parts.slice(3).join(' ');
+                    if (!subDigits) { subDigits = text; mainDigits = ""; }
+                }
+
+                checkTargets.forEach(t => {
+                    if (t && t !== '--') {
+                        let regex = new RegExp(t, 'g');
+                        subDigits = subDigits.replace(regex, `<span class="highlight-win">${t}</span>`);
+                        if (mainDigits) {
+                            mainDigits = mainDigits.replace(regex, `<span class="highlight-win">${t}</span>`);
+                        }
+                    }
+                });
+
+                let mainHtml = mainDigits ? `<div class="pred-main-digits">${mainDigits}</div>` : '';
+                let subHtml = `<div class="pred-sub-digits">${subDigits}</div>`;
+                let winBadgeHtml = hasWon ? `<div class="win-badge">✅ ခန့်မှန်းချက်မှန်ကန်ပါသည်။</div>` : '';
+
+                listHtml += `
+                    <div class="history-card" style="${hasWon ? 'border: 1px solid rgba(56, 239, 125, 0.5);' : ''}">
+                        <div class="history-date">📅 ${date} (${dayName})</div>
+                        ${mainHtml}
+                        ${subHtml}
+                        ${winBadgeHtml}
+                    </div>
+                `;
+            });
+        } else {
+            listHtml = '<p style="text-align: center; color: #a0aec0;">ခန့်မှန်းချက်မှတ်တမ်းများ မရှိသေးပါ။</p>';
+        }
+        document.getElementById('prediction-list').innerHTML = listHtml;
+    } catch (err) {
+        console.error(err);
+        document.getElementById('prediction-list').innerHTML = '<p style="text-align: center; color: #ff6b6b;">အမှားအယွင်း ရှိခဲ့ပါသည်။</p>';
+    }
+}
+function closePredictionModal() { document.getElementById('predictionModal').style.display = 'none'; }
+
+function openAdminModal() {
+    document.getElementById('adminModal').style.display = 'block';
+    if (formattedCurrentDate) {
+        document.getElementById('admin-date').value = formattedCurrentDate;
+    }
+}
+function closeAdminModal() { document.getElementById('adminModal').style.display = 'none'; }
+
+async function saveAdminPrediction() {
+    let date = document.getElementById('admin-date').value.trim();
+    let text = document.getElementById('admin-text').value.trim();
+
+    if (!date || !text) {
+        alert('ကျေးဇူးပြု၍ ရက်စွဲနှင့် ခန့်မှန်းချက်ကို ဖြည့်သွင်းပါ။');
+        return;
+    }
+
+    try {
+        const predRef = window.docRef(window.db, "appData", "predictions");
+        const predSnap = await window.getDocRef(predRef);
+        let predData = predSnap.exists() ? predSnap.data() : {};
+
+        predData[date] = text;
+        await window.setDocRef(predRef, predData);
+
+        alert('ခန့်မှန်းချက်ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!');
+        closeAdminModal();
+    } catch (err) {
+        console.error(err);
+        alert('သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိခဲ့ပါသည်။');
+    }
+}
+
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+    }
+}
+</script>
+
+</body>
+</html>
