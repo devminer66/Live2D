@@ -534,7 +534,10 @@ function fetchLive2D() {
                 let list = data.history || data.result;
                 list.forEach(item => {
                     let timeStr = item.open_time || item.time || '';
-                    let rawD = item.date || (timeStr.includes('-') ? timeStr.split('T')[0] : currentLiveDate);
+                    let rawD = item.date || (timeStr.includes('-') ? timeStr.split('T')[0] : '');
+                    
+                    if (!rawD || rawD.length < 8) return;
+
                     let formattedD = formatDate(rawD);
                     let val2D = item.twod || item.number || '--';
                     
