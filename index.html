@@ -27,7 +27,6 @@
         window.setDocRef = setDoc;
         window.getDocRef = getDoc;
 
-        // Start App after Firebase initialized
         initApp();
     </script>
 
@@ -466,68 +465,82 @@ function fetchLive2D() {
     fetch('https://api.thaistock2d.com/live')
         .then(response => response.json())
         .then(data => {
+            let setNumStr = '-';
+            let valNumStr = '-';
+            let rawDate = '';
+
             if (data && data.live) {
-                let setNumStr = data.live.set ? String(data.live.set) : '-';
-                let valNumStr = data.live.value ? String(data.live.value) : '-';
-                let rawDate = data.live.time ? data.live.time.substring(0, 10) : '';
-                
-                if (rawDate) currentLiveDate = rawDate;
-
-                formattedCurrentDate = formatDate(currentLiveDate);
-                document.getElementById('date-text').innerText = "ရက်စွဲ - " + formattedCurrentDate + " (" + getDayName(formattedCurrentDate) + ")";
-                document.getElementById('set-val').innerText = setNumStr;
-                document.getElementById('val-val').innerText = valNumStr;
-
-                let firstDigit = "", lastDigit = "";
-                if (setNumStr.includes('.')) firstDigit = setNumStr.split('.')[1].slice(-1);
-                if (valNumStr.includes('.')) lastDigit = valNumStr.split('.')[0].replace(/,/g, '').slice(-1);
-
-                let digitElem = document.getElementById('digit-result');
-                let newDigit = "--";
-
-                if (firstDigit !== "" && lastDigit !== "") {
-                    newDigit = firstDigit + lastDigit;
-                }
-
-                if (newDigit !== previousDigit) {
-                    digitElem.innerText = newDigit;
-                    previousDigit = newDigit;
-                    digitElem.classList.remove('updating-anim');
-                    void digitElem.offsetWidth;
-                    if (newDigit !== "--") {
-                        digitElem.classList.add('updating-anim');
-                    }
-                }
-
-                let morning = "--", evening = "--";
-                let cleanSet = setNumStr.replace(/[,.]/g, '');
-                if (cleanSet.length >= 2) morning = cleanSet.slice(-2);
-
-                if (data.result && Array.isArray(data.result)) {
-                    data.result.forEach(res => {
-                        let timeStr = res.open_time || '';
-                        let val2D = res.twod || '--';
-                        if (timeStr.includes('12:01')) morning = val2D;
-                        else if (timeStr.includes('16:30') || timeStr.includes('04:30')) evening = val2D;
-                    });
-                }
-
-                document.getElementById('morning-val').innerText = morning;
-                document.getElementById('evening-val').innerText = evening;
-                saveToServerHistory(formattedCurrentDate, morning, evening);
+                setNumStr = data.live.set ? String(data.live.set) : '-';
+                valNumStr = data.live.value ? String(data.live.value) : '-';
+                rawDate = data.live.time ? data.live.time.substring(0, 10) : '';
             }
+
+            if (!rawDate) {
+                let today = new Date();
+                let year = today.getFullYear();
+                let month = String(today.getMonth() + 1).padStart(2, '0');
+                let day = String(today.getDate()).padStart(2, '0');
+                rawDate = `${year}-${month}-${day}`;
+            }
+
+            currentLiveDate = rawDate;
+            formattedCurrentDate = formatDate(currentLiveDate);
+            document.getElementById('date-text').innerText = "ရက်စွဲ - " + formattedCurrentDate + " (" + getDayName(formattedCurrentDate) + ")";
+            document.getElementById('set-val').innerText = setNumStr;
+            document.getElementById('val-val').innerText = valNumStr;
+
+            let firstDigit = "", lastDigit = "";
+            if (setNumStr.includes('.')) firstDigit = setNumStr.split('.')[1].slice(-1);
+            if (valNumStr.includes('.')) lastDigit = valNumStr.split('.')[0].replace(/,/g, '').slice(-1);
+
+            let digitElem = document.getElementById('digit-result');
+            let newDigit = "--";
+
+            if (firstDigit !== "" && lastDigit !== "") {
+                newDigit = firstDigit + lastDigit;
+            } else if (data && data.result && data.result.length > 0) {
+                let latest2D = data.result[0].twod;
+                if (latest2D) newDigit = latest2D;
+            }
+
+            if (newDigit !== previousDigit) {
+                digitElem.innerText = newDigit;
+                previousDigit = newDigit;
+                digitElem.classList.remove('updating-anim');
+                void digitElem.offsetWidth;
+                if (newDigit !== "--") {
+                    digitElem.classList.add('updating-anim');
+                }
+            }
+
+            let morning = "--", evening = "--";
+            let cleanSet = setNumStr.replace(/[,.]/g, '');
+            if (cleanSet.length >= 2) morning = cleanSet.slice(-2);
+
+            if (data.result && Array.isArray(data.result)) {
+                data.result.forEach(res => {
+                    let timeStr = res.open_time || '';
+                    let val2D = res.twod || '--';
+                    if (timeStr.includes('12:01')) morning = val2D;
+                    else if (timeStr.includes('16:30') || timeStr.includes('04:30') || timeStr.includes('16:00')) evening = val2D;
+                });
+            }
+
+            document.getElementById('morning-val').innerText = morning;
+            document.getElementById('evening-val').innerText = evening;
+            saveToServerHistory(formattedCurrentDate, morning, evening);
 
             if (data && (data.history || data.result)) {
                 let list = data.history || data.result;
                 list.forEach(item => {
                     let timeStr = item.open_time || item.time || '';
-                    let rawDate = item.date || (timeStr.includes('-') ? timeStr.split('T')[0] : currentLiveDate);
-                    let formattedD = formatDate(rawDate);
+                    let rawD = item.date || (timeStr.includes('-') ? timeStr.split('T')[0] : currentLiveDate);
+                    let formattedD = formatDate(rawD);
                     let val2D = item.twod || item.number || '--';
                     
                     if (formattedD && formattedD !== '-') {
                         let mVal = timeStr.includes('12:01') ? val2D : '--';
-                        let eVal = (timeStr.includes('16:30') || timeStr.includes('04:30')) ? val2D : '--';
+                        let eVal = (timeStr.includes('16:30') || timeStr.includes('04:30') || timeStr.includes('16:00')) ? val2D : '--';
                         saveToServerHistory(formattedD, mVal, eVal);
                     }
                 });
