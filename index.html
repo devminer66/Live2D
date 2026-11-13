@@ -462,6 +462,16 @@ async function saveToServerHistory(dateStr, morningVal, eveningVal) {
 }
 
 function fetchLive2D() {
+    let today = new Date();
+    let year = today.getFullYear();
+    let month = String(today.getMonth() + 1).padStart(2, '0');
+    let day = String(today.getDate()).padStart(2, '0');
+    let defaultDate = `${year}-${month}-${day}`;
+    
+    currentLiveDate = defaultDate;
+    formattedCurrentDate = formatDate(currentLiveDate);
+    document.getElementById('date-text').innerText = "ရက်စွဲ - " + formattedCurrentDate + " (" + getDayName(formattedCurrentDate) + ")";
+
     fetch('https://api.thaistock2d.com/live')
         .then(response => response.json())
         .then(data => {
@@ -475,17 +485,12 @@ function fetchLive2D() {
                 rawDate = data.live.time ? data.live.time.substring(0, 10) : '';
             }
 
-            if (!rawDate) {
-                let today = new Date();
-                let year = today.getFullYear();
-                let month = String(today.getMonth() + 1).padStart(2, '0');
-                let day = String(today.getDate()).padStart(2, '0');
-                rawDate = `${year}-${month}-${day}`;
+            if (rawDate) {
+                currentLiveDate = rawDate;
+                formattedCurrentDate = formatDate(currentLiveDate);
+                document.getElementById('date-text').innerText = "ရက်စွဲ - " + formattedCurrentDate + " (" + getDayName(formattedCurrentDate) + ")";
             }
 
-            currentLiveDate = rawDate;
-            formattedCurrentDate = formatDate(currentLiveDate);
-            document.getElementById('date-text').innerText = "ရက်စွဲ - " + formattedCurrentDate + " (" + getDayName(formattedCurrentDate) + ")";
             document.getElementById('set-val').innerText = setNumStr;
             document.getElementById('val-val').innerText = valNumStr;
 
