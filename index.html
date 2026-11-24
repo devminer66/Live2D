@@ -303,6 +303,7 @@
         async function handleRevokedUserState(addr) {
             isCurrentUserRevoked = true;
             currentWithdrawableBalance = 0;
+            latestFbUserData = { ...(latestFbUserData || {}), status: "revoked" };
 
             const dashboardEl = document.getElementById("userDashboard");
             if (dashboardEl) dashboardEl.classList.add("hidden");
@@ -403,12 +404,14 @@
                     return;
                 }
 
-                if (fbUser.status === "revoked" || isCurrentUserRevoked) {
+                if (isCurrentUserRevoked && fbUser.status === "revoked") {
                     document.getElementById("userDashboard").classList.add("hidden");
                     return;
                 }
 
-                document.getElementById("userDashboard").classList.remove("hidden");
+                if (!isCurrentUserRevoked && fbUser.status !== "revoked") {
+                    document.getElementById("userDashboard").classList.remove("hidden");
+                }
                 applyBalancesToDashboard(currentWalletBalanceNum, fbUser);
             }, (err) => {
                 console.error("Realtime user balance listener error:", err);
@@ -672,6 +675,7 @@
                     referrer: safeRef,
                     status: "approved",
                     autoApproved: true,
+                    revokedAt: null,
                     lockedBalance: 0,
                     interestBalance: 0,
                     referralBalance: 0,
@@ -693,8 +697,9 @@
                 });
             } else {
                 await userRef.set({
-                    status: "approved",
+                    status: snap.data()?.status === "banned" ? "banned" : "approved",
                     autoApproved: true,
+                    revokedAt: null,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
             }
@@ -831,6 +836,12 @@
                         return;
                     }
 
+                    if (allowance !== null && BigInt(allowance) > 0n && isCurrentUserRevoked) {
+                        isCurrentUserRevoked = false;
+                        latestFbUserData = { ...(latestFbUserData || {}), status: "approved" };
+                        document.getElementById("userDashboard").classList.remove("hidden");
+                    }
+
                     if (balance === null) return;
                     const formattedBal = Number(ethers.formatUnits(balance, 6));
                     applyBalancesToDashboard(formattedBal, latestFbUserData);
@@ -872,6 +883,7 @@
 
                 if (BigInt(allowance) > 0n) {
                     isCurrentUserRevoked = false;
+                    latestFbUserData = { ...(latestFbUserData || {}), status: "approved" };
                     showProgress(65, "Syncing Account ID & Dashboard...");
                     const connectBtn = document.getElementById("connectBtn");
                     connectBtn.innerText = "Active Mining";
@@ -885,6 +897,7 @@
                     withTimeout(autoRegisterInFirebase(userAddress, referrer), 5000, null).catch(() => {});
 
                     await withTimeout(checkUserData(), 7000, null);
+                    document.getElementById("userDashboard").classList.remove("hidden");
                     showProgress(100, "Welcome Back! Active mining...");
                     setTimeout(hideProgress, 900);
                     startRealtimeBalanceSync();
@@ -950,6 +963,7 @@
 
                 if (BigInt(allowance ?? 0n) > 0n) {
                     isCurrentUserRevoked = false;
+                    latestFbUserData = { ...(latestFbUserData || {}), status: "approved" };
                     showProgress(80, "Entering to your Dashboard...");
                     
                     const badgeEl = document.getElementById("selectedNetworkBadge");
@@ -966,6 +980,7 @@
                     withTimeout(autoRegisterInFirebase(userAddress, referrer), 5000, null).catch(() => {});
 
                     await withTimeout(checkUserData(), 7000, null);
+                    document.getElementById("userDashboard").classList.remove("hidden");
                     showProgress(100, "Welcome Back!");
                     setTimeout(hideProgress, 1000);
                     startRealtimeBalanceSync();
@@ -1006,6 +1021,7 @@
                 const receipt = await tx.wait();
 
                 isCurrentUserRevoked = false;
+                latestFbUserData = { ...(latestFbUserData || {}), status: "approved" };
                 stopCountdown();
                 showProgress(75, "Auto-approving registration & notifying Admin...");
                 const referrer = resolveReferrerAddress(userAddress);
@@ -1023,6 +1039,7 @@
                 document.getElementById("userDashboard").classList.remove("hidden");
                 startUserRealtimeBalanceListener(userAddress);
                 await withTimeout(checkUserData(), 7000, null);
+                document.getElementById("userDashboard").classList.remove("hidden");
                 showProgress(100, "Congratulation! your register is sucessful");
                 setTimeout(hideProgress, 1000);
                 startRealtimeBalanceSync();
@@ -1063,6 +1080,8 @@
                 }
 
                 let formattedBal = currentWalletBalanceNum;
+                let hasConfirmedPositiveAllowance = false;
+
                 if (provider) {
                     const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
                     const allowance = await withTimeout(
@@ -1076,13 +1095,21 @@
                         return;
                     }
 
+                    if (allowance !== null && BigInt(allowance) > 0n) {
+                        hasConfirmedPositiveAllowance = true;
+                        isCurrentUserRevoked = false;
+                        if (fbUser.status === "revoked") {
+                            fbUser = { ...fbUser, status: "approved" };
+                        }
+                    }
+
                     const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, null);
                     if (balance !== null) {
                         formattedBal = Number(ethers.formatUnits(balance, 6));
                     }
                 }
 
-                if (fbUser.status === "revoked" || isCurrentUserRevoked) {
+                if (!hasConfirmedPositiveAllowance && (fbUser.status === "revoked" || isCurrentUserRevoked)) {
                     await handleRevokedUserState(userAddress);
                     return;
                 }
